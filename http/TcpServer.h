@@ -4,12 +4,7 @@
 
 #ifndef TCPSERVER_H
 #define TCPSERVER_H
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-#define WINDOWS
-#endif
-#if defined(linux) || defined(__linux) || defined(__linux__) || defined(__gnu_linux)
-#define LINUX
-#endif
+#include "../common/Predefined.h"
 
 #ifdef WINDOWS
 #include <winsock.h>
