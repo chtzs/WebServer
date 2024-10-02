@@ -18,7 +18,10 @@ add_executable(WebServer main.cpp
         thread_pool/SafeQueue.h
         http/MultiplexingLinux.cpp
         http/MultiplexingLinux.h
-        common/Predefined.h)
+        common/Predefined.h
+        http/Multiplexing.h
+        http/MultiplexingWindows.cpp
+        http/MultiplexingWindows.h)
 
 if (WIN32)
     target_link_libraries(WebServer libwsock32.a)

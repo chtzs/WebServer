@@ -13,5 +13,16 @@
 #error "Unsupported platform"
 #endif
 
+#ifdef WINDOWS
+#include <winsock.h>
+typedef SOCKET socket_type;
+typedef int socket_len_type;
+#endif
+
+#ifdef LINUX
+#include <sys/socket.h>
+typedef int socket_type;
+typedef socklen_t socket_len_type;
+#endif
 
 #endif //PREDEFINED_H
