@@ -3,7 +3,7 @@
 //
 
 #include "MultiplexingLinux.h"
-
+#ifdef LINUX
 
 void MultiplexingLinux::exit_with_error(const std::string &message) const {
     logger->error(message);
@@ -64,3 +64,4 @@ void MultiplexingLinux::poll_sockets(std::vector<AsynSocket> &out_sockets, int &
 MultiplexingLinux::~MultiplexingLinux() {
     close(epoll_fd);
 }
+#endif

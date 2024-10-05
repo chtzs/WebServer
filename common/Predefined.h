@@ -14,7 +14,8 @@
 #endif
 
 #ifdef WINDOWS
-#include <winsock.h>
+#include <winsock2.h>
+#include <mswsock.h>
 typedef SOCKET socket_type;
 typedef int socket_len_type;
 #endif

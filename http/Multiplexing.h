@@ -6,8 +6,10 @@
 #define MULTIPLEXING_H
 
 #include <cstdlib>
+#include <functional>
 #include <vector>
 #include "../common/Predefined.h"
+#include "../thread_pool/SafeQueue.h"
 
 #ifdef LINUX
 #include <unistd.h>
@@ -33,13 +35,52 @@ static long receive_bytes(const socket_type fd, char *buf, const int buf_size) {
 #endif
 }
 
+struct SocketBuffer {
+    static constexpr int MAX_SIZE = 1024;
 #ifdef WINDOWS
-struct AsynSocket {
-    enum class Type {
+    WSABUF wsaBuf{MAX_SIZE, buffer};
+#endif
+    char buffer[MAX_SIZE]{};
+    size_t size = 0;
+};
+
+#ifdef WINDOWS
+
+struct AsyncSocket {
+    OVERLAPPED overlapped{};
+
+    enum class IOType {
         UNKNOWN,
         NEW_CONNECTION,
-        CLIENT
+        CLIENT_READ,
+        CLIENT_WRITE
     };
+
+    IOType type;
+    socket_type socket;
+
+    SocketBuffer buffer{};
+    DWORD n_buffer_bytes = 0;
+    char lpOutputBuf[1024]{};
+
+    bool closed = false;
+
+public:
+    AsyncSocket(const IOType type, const socket_type socket)
+        : type(type), socket(socket) {
+    }
+
+    void async_close() {
+        closed = true;
+    }
+
+    void reset() {
+        closed = false;
+        socket = INVALID_SOCKET;
+        type = IOType::UNKNOWN;
+        buffer.wsaBuf.len = SocketBuffer::MAX_SIZE;
+        memset(&overlapped, 0, sizeof(OVERLAPPED));
+    }
 };
 #endif
 
@@ -84,11 +125,22 @@ struct AsynSocket {
 };
 #endif
 
+struct ConnectionBehavior {
+    std::function<void(AsyncSocket *, SocketBuffer)> on_received{};
+    std::function<void(AsyncSocket *)> then_response{};
+};
+
 class Multiplexing {
 public:
     virtual ~Multiplexing() = default;
 
-    virtual void poll_sockets(std::vector<AsynSocket> &out_sockets, int &out_size) = 0;
+    virtual void setup() = 0;
+
+    virtual void on_connected(ConnectionBehavior connection) = 0;
+
+    virtual void start() = 0;
+
+    virtual void stop() = 0;
 };
 
 #endif //MULTIPLEXING_H

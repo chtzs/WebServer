@@ -24,5 +24,7 @@ add_executable(WebServer main.cpp
         http/MultiplexingWindows.h)
 
 if (WIN32)
-    target_link_libraries(WebServer libwsock32.a)
+    #    target_link_libraries(WebServer libwsock32.a)
+    target_link_libraries(WebServer libws2_32.a)
+    target_link_libraries(WebServer MSWSOCK.DLL)
 endif ()
