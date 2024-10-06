@@ -7,14 +7,18 @@
 void task_loop(Worker *self) {
     while (!self->m_shutdown) {
         shared_ptr<Task> task; {
-            std::cout << "Waiting..." << std::endl;
-            std::unique_lock<std::mutex> lock(self->context->condition_mutex);
-            self->context->condition.wait(lock, [self] {
-                return self->m_shutdown || !self->context->task_queue.empty();
-            });
+            // std::cout << "Waiting..." << std::endl;
+            {
+                std::unique_lock lock(self->context->condition_mutex);
+                self->context->condition.wait(lock, [self] {
+                    return self->m_shutdown || !self->context->task_queue.empty();
+                });
+            }
+            // Ignore the stupid "Condition is always false" alerted by CLion
             if (self->m_shutdown)
                 break;
             // std::cout << "Get resources" << self->context->task_queue.size() << std::endl;
+            // task_queue is SafeQueue, so the lock is unnecessary.
             task = self->context->task_queue.front();
             self->context->task_queue.pop();
         }
