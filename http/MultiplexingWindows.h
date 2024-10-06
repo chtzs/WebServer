@@ -50,15 +50,15 @@ public:
         int number_of_events = 3000
     );
 
-    void set_callback(ConnectionBehavior behavior) override;
+    ~MultiplexingWindows() override;
+
+    void set_callback(const ConnectionBehavior &behavior) override;
 
     void setup() override;
 
     void start() override;
 
     void stop() override;
-
-    ~MultiplexingWindows() override;
 };
 
 #endif

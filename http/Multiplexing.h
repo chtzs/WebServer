@@ -85,42 +85,29 @@ public:
 #endif
 
 #ifdef LINUX
-struct AsynSocket {
-    enum class Type {
+struct AsyncSocket {
+    enum class IOType {
         UNKNOWN,
         NEW_CONNECTION,
-        CLIENT
+        CLIENT_READ,
+        CLIENT_WRITE
     };
 
     int epoll_fd = -1;
     int fd = -1;
 
-    Type type = Type::UNKNOWN;
+    IOType type = IOType::UNKNOWN;
+    socket_type socket;
 
-    void add(const int new_socket_fd) const {
-        epoll_event ev{
-            // 设置epoll事件类型为可读事件和边缘触发
-            .events = static_cast<uint32_t>(EPOLLIN | EPOLLET),
-            // 将监听socket关联到epoll事件中
-            .data.fd = new_socket_fd,
-        };
+    bool closed = false;
 
-        if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, new_socket_fd, &ev) == -1) {
-            // 如果添加监听socket到epoll失败，输出错误信息，关闭监听socket和epoll实例，并退出程序
-            ::close(new_socket_fd);
-            ::exit(-1);
-        }
-
-        // Set socket_fd to non-block mode
-        fcntl(new_socket_fd, F_SETFL, O_NONBLOCK);
+public:
+    AsyncSocket(const IOType type, const socket_type socket)
+        : type(type), socket(socket) {
     }
 
-    long read(char *buf, const int buf_size) const {
-        return receive_bytes(fd, buf, buf_size);
-    }
-
-    void close() const {
-        epoll_ctl(fd, EPOLL_CTL_DEL, fd, nullptr);
+    void async_close() {
+        closed = true;
     }
 };
 #endif
@@ -136,7 +123,7 @@ public:
 
     virtual void setup() = 0;
 
-    virtual void set_callback(ConnectionBehavior connection) = 0;
+    virtual void set_callback(const ConnectionBehavior &behavior) = 0;
 
     virtual void start() = 0;
 

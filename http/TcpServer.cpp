@@ -4,10 +4,11 @@
 
 #include "TcpServer.h"
 
+#include "MultiplexingLinux.h"
 #include "MultiplexingWindows.h"
 
 void TcpServer::exit_with_error(const std::string &message) const {
-    m_logger->error(message);
+    m_logger->error(message.c_str());
     exit(-1);
 }
 
@@ -34,6 +35,7 @@ int TcpServer::start_server() {
 
     m_multiplexing->setup();
     m_multiplexing->start();
+
     return 0;
 }
 
@@ -58,10 +60,13 @@ void TcpServer::setup() {
     m_listen_socket = WSASocketW(AF_INET, SOCK_STREAM, IPPROTO_IP, nullptr, 0, WSA_FLAG_OVERLAPPED);
 
     m_multiplexing = new MultiplexingWindows(m_listen_socket);
-    m_multiplexing->set_callback(std::move(m_behavior));
+    m_multiplexing->set_callback(m_behavior);
 #elif defined(LINUX)
     // Create the socket with ipv4 and automatic protocol
-    socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    m_listen_socket = socket(AF_INET, SOCK_STREAM, 0);
+
+    m_multiplexing = new MultiplexingLinux(m_listen_socket);
+    m_multiplexing->set_callback(m_behavior);
 #endif
     if (m_listen_socket < 0) {
         exit_with_error("Failed to create socket.");
@@ -84,7 +89,7 @@ void TcpServer::start_listening() const {
             << " PORT: " << ntohs(m_socket_address.sin_port)
             << " ***"
             << std::endl;
-    m_logger->log(ss.str());
+    m_logger->log(ss.str().c_str());
 }
 
 void TcpServer::accept_connection() {
@@ -95,7 +100,7 @@ void TcpServer::accept_connection() {
             std::ostringstream ss;
             ss << "====== Waiting for a new connection ======"
                     << std::endl;
-            m_logger->log(ss.str());
+            m_logger->log(ss.str().c_str());
         }
 
         m_accept_socket_fd = accept(m_listen_socket,
@@ -113,7 +118,7 @@ void TcpServer::accept_connection() {
             ss << "------ Received Request from client ------\n";
             ss << "Received bytes: " << bytes_received << "\n";
             ss << buffer;
-            m_logger->log(ss.str());
+            m_logger->log(ss.str().c_str());
             if (strcmp(buffer, "exit") == 0
                 || strcmp(buffer, "exit\n") == 0
                 || strcmp(buffer, "exit\r\n") == 0) {

@@ -35,8 +35,8 @@ void MultiplexingWindows::setup() {
                            0);
 }
 
-void MultiplexingWindows::set_callback(ConnectionBehavior behavior) {
-    m_behavior = std::move(behavior);
+void MultiplexingWindows::set_callback(const ConnectionBehavior &behavior) {
+    m_behavior = behavior;
 }
 
 void MultiplexingWindows::async_accept(AsyncSocket *reused = nullptr) const {

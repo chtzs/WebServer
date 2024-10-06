@@ -5,6 +5,9 @@
 #ifndef MULTIPLEXING_LINUX_H
 #define MULTIPLEXING_LINUX_H
 
+#include <condition_variable>
+#include <thread>
+
 #include "Multiplexing.h"
 #include "../common/Predefined.h"
 
@@ -19,26 +22,57 @@
 #include <sys/epoll.h>
 #include <vector>
 
-class MultiplexingLinux : public Multiplexing {
-private:
-    int epoll_fd = -1;
-    int socket_fd;
-    int max_events;
+class MultiplexingLinux final : public Multiplexing {
+    std::mutex m_mutex{};
+    std::condition_variable m_condition{};
 
-    std::vector<epoll_event> events;
+    sockaddr m_address{};
+    socket_len_type m_address_len;
 
-    Logger *logger = nullptr;
+    int m_socket_listen;
+    int number_of_events;
+    int number_of_threads;
+    volatile bool m_is_shutdown = false;
 
-    void setup(int socket_fd);
+    std::vector<std::thread> m_working_thread;
+    std::vector<int> m_epoll_list;
+
+    ConnectionBehavior m_behavior;
+
+    Logger *m_logger = nullptr;
 
     void exit_with_error(const std::string &message) const;
 
-public:
-    explicit MultiplexingLinux(int socket_fd, int max_events = 3000);
+    bool add_to_epoll(int epoll_fd, int socket_fd) const;
 
-    void poll_sockets(std::vector<AsynSocket> &out_sockets, int &out_size) override;
+    bool create_epoll_fd();
+
+    void process_loop(int epoll_fd);
+
+    bool async_accept(int epoll_fd);
+
+    bool async_receive(int epoll_fd, int client_fd, SocketBuffer &buffer) const;
+
+    void notify_stop();
+
+    void wait_for_thread();
+
+public:
+    explicit MultiplexingLinux(
+        socket_type socket_listen,
+        int number_of_threads = 1,
+        int number_of_events = 3000
+    );
 
     ~MultiplexingLinux() override;
+
+    void set_callback(const ConnectionBehavior &behavior) override;
+
+    void setup() override;
+
+    void start() override;
+
+    void stop() override;
 };
 
 #endif
