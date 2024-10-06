@@ -27,26 +27,31 @@ typedef socklen_t socket_len_type;
 #include "../log/Logger.h"
 
 class TcpServer {
-    // 常量
+    // Only for test
     static constexpr int MAX_CONNECTIONS = 20000;
     static constexpr size_t BUFFER_SIZE = 30720;
 
-    Logger *logger;
+    Logger *m_logger;
 
     // socket file descriptor
-    socket_type socket_fd = -1, accept_socket_fd = -1;
+    socket_type m_listen_socket = -1, m_accept_socket_fd = -1;
     // socket info
-    sockaddr_in socket_address;
+    sockaddr_in m_socket_address;
     // ip address
-    const std::string ip_address;
+    const std::string m_ip_address;
     // port
-    const int ip_port;
+    const int m_ip_port;
 
-    Multiplexing *multiplexing = nullptr;
+    // If the os is Linux, use epoll; If Windows, use IOCP.
+    Multiplexing *m_multiplexing = nullptr;
 
-    ConnectionBehavior behavior{};
+    // Send, Receive Callback
+    ConnectionBehavior m_behavior{};
 
-    bool is_shutdown = false;
+    bool m_is_shutdown = false;
+
+    // Create sockets, bind port, and more
+    void setup();
 
     void start_listening() const;
 
@@ -55,12 +60,14 @@ class TcpServer {
 public:
     explicit TcpServer(std::string &&ip_address = "0.0.0.0", int ip_port = 8080);
 
-    void on_connected(const ConnectionBehavior &connection);
+    // Bind callback
+    void set_callback(const ConnectionBehavior &behavior);
 
     int start_server();
 
     void close_server();
 
+    // Only for test
     void accept_connection();
 };
 

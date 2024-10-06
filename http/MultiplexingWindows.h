@@ -13,40 +13,50 @@
 #include <winsock2.h>
 
 class MultiplexingWindows final : public Multiplexing {
-    std::vector<std::thread> working_thread;
-    std::mutex mutex{};
-    std::condition_variable condition{};
+    std::vector<std::thread> m_working_thread;
+    std::mutex m_mutex{};
+    std::condition_variable m_condition{};
 
     HANDLE iocp_handle = nullptr;
 
-    LPDWORD number_of_bytes = nullptr;
-
     int number_of_threads;
 
-    socket_type socket_listen;
+    int number_of_events;
+
+    socket_type m_socket_listen;
 
     ConnectionBehavior m_behavior{};
 
-    bool is_shutdown = false;
+    bool m_is_shutdown = false;
 
+    // Send accept request to IOCP
     void async_accept(AsyncSocket *reused) const;
 
+    // Send receive or write request to IOCP
     void async_work() const;
-
-public:
-    explicit MultiplexingWindows(socket_type socket_listen, int number_of_threads = 20);
-
-    void setup() override;
-
-    void on_connected(ConnectionBehavior connection) override;
-
-    void start() override;
-
-    void stop() override;
 
     void notify_stop();
 
     void wait_for_thread();
+
+public:
+    /// Bind a listen socket to IOCP
+    /// @param socket_listen Socket to be bound
+    /// @param number_of_threads Number of working thread
+    /// @param number_of_events Maximum number of simultaneous clients on a single web server
+    explicit MultiplexingWindows(
+        socket_type socket_listen,
+        int number_of_threads = 20,
+        int number_of_events = 3000
+    );
+
+    void set_callback(ConnectionBehavior behavior) override;
+
+    void setup() override;
+
+    void start() override;
+
+    void stop() override;
 
     ~MultiplexingWindows() override;
 };

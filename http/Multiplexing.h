@@ -136,7 +136,7 @@ public:
 
     virtual void setup() = 0;
 
-    virtual void on_connected(ConnectionBehavior connection) = 0;
+    virtual void set_callback(ConnectionBehavior connection) = 0;
 
     virtual void start() = 0;
 
