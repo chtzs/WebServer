@@ -143,9 +143,7 @@ void MultiplexingWindows::async_work() const {
             }
             break;
             default:
-
-
-
+                break;
         }
     }
 }
@@ -163,7 +161,7 @@ MultiplexingWindows::~MultiplexingWindows() = default;
 
 
 void MultiplexingWindows::start() {
-    for (int i = 0; i < number_of_threads; ++i) {
+    for (int i = 0; i < number_of_events; ++i) {
         async_accept();
     }
     for (int i = 0; i < number_of_threads; ++i) {
