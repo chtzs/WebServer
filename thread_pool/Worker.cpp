@@ -15,6 +15,7 @@ void task_loop(Worker *self) {
                 });
             }
             // Ignore the stupid "Condition is always false" alerted by CLion
+            // Update: I found a keyword: "volatile"
             if (self->m_shutdown)
                 break;
             // std::cout << "Get resources" << self->context->task_queue.size() << std::endl;

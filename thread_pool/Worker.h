@@ -25,7 +25,7 @@ private:
     std::function<void()> m_on_finished;
     std::thread m_thread;
     Status m_status = Status::IDLE;
-    bool m_shutdown = false;
+    volatile bool m_shutdown = false;
     SharedContext *context = nullptr;
 
     friend void task_loop(Worker *self);
