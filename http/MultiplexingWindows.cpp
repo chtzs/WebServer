@@ -3,7 +3,7 @@
 //
 
 #include "MultiplexingWindows.h"
-
+#ifdef WINDOWS
 #include <iostream>
 
 
@@ -196,3 +196,4 @@ void MultiplexingWindows::wait_for_thread() {
         m_working_thread[i].join();
     }
 }
+#endif
