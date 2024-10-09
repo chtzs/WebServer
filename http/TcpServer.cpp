@@ -30,12 +30,14 @@ TcpServer::TcpServer(std::string &&ip_address, const int ip_port)
 }
 
 int TcpServer::start_server() {
+    m_logger->info("Server started.");
     setup();
     start_listening();
 
     m_multiplexing->setup();
     m_multiplexing->start();
 
+    m_logger->info("Server closed.");
     return 0;
 }
 
@@ -67,6 +69,8 @@ void TcpServer::setup() {
 
     m_multiplexing = new MultiplexingLinux(m_listen_socket);
     m_multiplexing->set_callback(m_behavior);
+    int reuse = 1;
+    setsockopt(m_listen_socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 #endif
     if (m_listen_socket < 0) {
         exit_with_error("Failed to create socket.");
@@ -104,8 +108,8 @@ void TcpServer::accept_connection() {
         }
 
         m_accept_socket_fd = accept(m_listen_socket,
-                                  reinterpret_cast<sockaddr *>(&m_socket_address),
-                                  &size);
+                                    reinterpret_cast<sockaddr *>(&m_socket_address),
+                                    &size);
         if (m_accept_socket_fd < 0) {
             return;
         }

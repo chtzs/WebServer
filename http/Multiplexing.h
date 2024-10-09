@@ -42,6 +42,11 @@ struct SocketBuffer {
 #endif
     char buffer[MAX_SIZE]{};
     size_t size = 0;
+    char *p_current = buffer;
+
+    SocketBuffer(const SocketBuffer &other) = default;
+
+    SocketBuffer &operator=(const SocketBuffer &other) = default;
 };
 
 #ifdef WINDOWS
@@ -104,6 +109,11 @@ struct AsyncSocket {
 public:
     AsyncSocket(const IOType type, const socket_type socket)
         : type(type), socket(socket) {
+    }
+
+    [[nodiscard]] size_t async_write(const SocketBuffer &buffer) const {
+        const auto has_sent = buffer.p_current - buffer.buffer;
+        return write(socket, buffer.p_current, buffer.size - has_sent);
     }
 
     void async_close() {
