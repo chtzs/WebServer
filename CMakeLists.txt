@@ -4,8 +4,8 @@ project(WebServer)
 set(CMAKE_CXX_STANDARD 17)
 
 add_executable(WebServer main.cpp
-        http/TcpServer.cpp
-        http/TcpServer.h
+        tcp/TcpServer.cpp
+        tcp/TcpServer.h
         log/Logger.cpp
         log/Logger.h
         thread_pool/ThreadPool.cpp
@@ -16,12 +16,12 @@ add_executable(WebServer main.cpp
         thread_pool/Worker.h
         thread_pool/SharedContext.h
         thread_pool/SafeQueue.h
-        http/MultiplexingLinux.cpp
-        http/MultiplexingLinux.h
+        tcp/multiplexing/MultiplexingLinux.cpp
+        tcp/multiplexing/MultiplexingLinux.h
         common/Predefined.h
-        http/Multiplexing.h
-        http/MultiplexingWindows.cpp
-        http/MultiplexingWindows.h)
+        tcp/multiplexing/Multiplexing.h
+        tcp/multiplexing/MultiplexingWindows.cpp
+        tcp/multiplexing/MultiplexingWindows.h)
 
 if (WIN32)
     #    target_link_libraries(WebServer libwsock32.a)

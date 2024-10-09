@@ -5,11 +5,11 @@
 #ifndef MULTIPLEXING_H
 #define MULTIPLEXING_H
 
-#include <cstdlib>
 #include <functional>
-#include <vector>
-#include "../common/Predefined.h"
-#include "../thread_pool/SafeQueue.h"
+#include <cstdlib>
+#include <cstring>
+#include "../../common/Predefined.h"
+#include "../../thread_pool/SafeQueue.h"
 
 #ifdef LINUX
 #include <unistd.h>

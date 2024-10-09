@@ -12,7 +12,7 @@
 #include <winsock2.h>
 #include <condition_variable>
 #include <thread>
-#include "../log/Logger.h"
+#include "../../log/Logger.h"
 
 class MultiplexingWindows final : public Multiplexing {
     Logger *m_logger;

@@ -4,8 +4,8 @@
 
 #include "TcpServer.h"
 
-#include "MultiplexingLinux.h"
-#include "MultiplexingWindows.h"
+#include "multiplexing/MultiplexingLinux.h"
+#include "multiplexing/MultiplexingWindows.h"
 
 void TcpServer::exit_with_error(const std::string &message) const {
     m_logger->error(message.c_str());

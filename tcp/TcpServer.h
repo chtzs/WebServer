@@ -4,7 +4,7 @@
 
 #ifndef TCPSERVER_H
 #define TCPSERVER_H
-#include "Multiplexing.h"
+#include "multiplexing/Multiplexing.h"
 #include "../common/Predefined.h"
 
 #ifdef WINDOWS
