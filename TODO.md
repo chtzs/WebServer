@@ -1,6 +1,6 @@
 # I/O Multiplex 
 * ~~Windows~~✔
-* Linux
+* ~~Linux~~✔
 
 # TCP
 * limit_req

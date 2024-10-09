@@ -44,9 +44,30 @@ struct SocketBuffer {
     size_t size = 0;
     char *p_current = buffer;
 
-    SocketBuffer(const SocketBuffer &other) = default;
+    SocketBuffer() = default;
 
-    SocketBuffer &operator=(const SocketBuffer &other) = default;
+    SocketBuffer(const SocketBuffer &other) {
+        memcpy(buffer, other.buffer, sizeof(buffer));
+#ifdef WINDOWS
+        wsaBuf.buf = buffer;
+        wsaBuf.len = other.wsaBuf.len;
+#endif
+        p_current = buffer;
+        size = other.size;
+    }
+
+    SocketBuffer &operator=(const SocketBuffer &other) {
+        if (this != &other) {
+            memcpy(buffer, other.buffer, sizeof(buffer));
+#ifdef WINDOWS
+            wsaBuf.buf = buffer;
+            wsaBuf.len = other.wsaBuf.len;
+#endif
+            p_current = buffer;
+            size = other.size;
+        }
+        return *this;
+    }
 };
 
 #ifdef WINDOWS
@@ -67,16 +88,41 @@ struct AsyncSocket {
     SocketBuffer buffer{};
     DWORD n_buffer_bytes = 0;
     char lpOutputBuf[1024]{};
+    SafeQueue<AsyncSocket *> *available_buffers;
 
     bool closed = false;
 
 public:
-    AsyncSocket(const IOType type, const socket_type socket)
-        : type(type), socket(socket) {
+    AsyncSocket(const IOType type, const socket_type socket, SafeQueue<AsyncSocket *> *available_buffers)
+        : type(type), socket(socket), available_buffers(available_buffers) {
     }
 
     void async_close() {
         closed = true;
+    }
+
+    [[nodiscard]] size_t async_write(const SocketBuffer &buffer) const {
+        AsyncSocket *socket_as_buffer;
+        if (available_buffers->empty()) {
+            socket_as_buffer = new AsyncSocket(IOType::CLIENT_WRITE, -1, available_buffers);
+        } else {
+            socket_as_buffer = available_buffers->front();
+            available_buffers->pop();
+        }
+
+        const auto has_sent = buffer.p_current - buffer.buffer;
+        const DWORD size = buffer.size - has_sent;
+        socket_as_buffer->buffer.wsaBuf.len = size;
+        DWORD bytes_sent = 0;
+
+        auto ret = WSASend(socket, &socket_as_buffer->buffer.wsaBuf, 1, &bytes_sent, 0, &socket_as_buffer->overlapped, nullptr);
+        if (ret != NOERROR) {
+            auto err = GetLastError();
+            if (err != WSA_IO_PENDING) {
+                exit(-1);
+            }
+        }
+        return bytes_sent;
     }
 
     void reset() {

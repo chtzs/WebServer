@@ -6,13 +6,19 @@
 #ifdef WINDOWS
 #include <iostream>
 
+void MultiplexingWindows::exit_with_error(const std::string &message) const {
+    m_logger->error(message.c_str());
+    exit(-1);
+}
 
 void MultiplexingWindows::setup() {
+    m_logger->info("IOCP Setup");
     unsigned long ul = 1;
     // Set socket_listen to non-block mode, but I'm not sure that this is needed.
     if (SOCKET_ERROR == ioctlsocket(m_socket_listen, FIONBIO, &ul)) {
         shutdown(m_socket_listen, SD_BOTH);
         closesocket(m_socket_listen);
+        exit_with_error("Failed to setup socket listing");
     }
 
     // Create IOCP handle.
@@ -39,7 +45,7 @@ void MultiplexingWindows::set_callback(const ConnectionBehavior &behavior) {
     m_behavior = behavior;
 }
 
-void MultiplexingWindows::async_accept(AsyncSocket *reused = nullptr) const {
+void MultiplexingWindows::async_accept(AsyncSocket *reused = nullptr) {
     // Create a normal socket
     const SOCKET client = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
 
@@ -51,7 +57,7 @@ void MultiplexingWindows::async_accept(AsyncSocket *reused = nullptr) const {
         async_socket->socket = client;
         async_socket->type = AsyncSocket::IOType::CLIENT_READ;
     } else {
-        async_socket = new AsyncSocket(AsyncSocket::IOType::CLIENT_READ, client);
+        async_socket = new AsyncSocket(AsyncSocket::IOType::CLIENT_READ, client, &m_available_buffers);
     }
 
     // Send accept request to IOCP. If done, the next step is to receive data from client.
@@ -77,16 +83,18 @@ void MultiplexingWindows::async_accept(AsyncSocket *reused = nullptr) const {
     if (SOCKET_ERROR == ioctlsocket(client, FIONBIO, &ul)) {
         shutdown(client, SD_BOTH);
         closesocket(client);
+        exit_with_error("Failed to accept socket");
     }
 
     // Associate new socket with iocp
     if (nullptr == CreateIoCompletionPort((HANDLE) client, iocp_handle, 0, 0)) {
         shutdown(client, SD_BOTH);
         closesocket(client);
+        exit_with_error("Failed to accept socket");
     }
 }
 
-void MultiplexingWindows::async_work() const {
+void MultiplexingWindows::async_work() {
     DWORD lpNumberOfBytesTransferred;
     DWORD dwFlags;
     void *lpCompletionKey = nullptr;
@@ -106,7 +114,10 @@ void MultiplexingWindows::async_work() const {
             continue;
 
         // Shutdown command
-        if (lpNumberOfBytesTransferred == -1) break;
+        if (lpNumberOfBytesTransferred == -1) {
+            delete async_socket;
+            break;
+        }
 
         switch (async_socket->type) {
             case AsyncSocket::IOType::CLIENT_READ: {
@@ -142,6 +153,10 @@ void MultiplexingWindows::async_work() const {
                 }
             }
             break;
+            case AsyncSocket::IOType::CLIENT_WRITE: {
+                m_available_buffers.push(async_socket);
+            }
+            break;
             default:
                 break;
         }
@@ -155,12 +170,14 @@ MultiplexingWindows::MultiplexingWindows(
     : number_of_threads(number_of_threads),
       number_of_events(number_of_events),
       m_socket_listen(socket_listen) {
+    m_logger = Logger::get_logger();
 }
 
 MultiplexingWindows::~MultiplexingWindows() = default;
 
 
 void MultiplexingWindows::start() {
+    m_logger->info("IOCP Start");
     for (int i = 0; i < number_of_events; ++i) {
         async_accept();
     }
@@ -177,10 +194,15 @@ void MultiplexingWindows::start() {
 }
 
 void MultiplexingWindows::stop() {
+    m_logger->info("IOCP Stop");
     // Clean up.
     notify_stop();
     wait_for_thread();
     CloseHandle(iocp_handle);
+    while (!m_available_buffers.empty()) {
+        delete m_available_buffers.front();
+        m_available_buffers.pop();
+    }
 }
 
 void MultiplexingWindows::notify_stop() {
