@@ -8,6 +8,8 @@
 #include <functional>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+
 #include "../../common/Predefined.h"
 #include "../../thread_pool/SafeQueue.h"
 
@@ -36,13 +38,17 @@ static long receive_bytes(const socket_type fd, char *buf, const int buf_size) {
 }
 
 struct SocketBuffer {
-    static constexpr int MAX_SIZE = 1024;
+    static constexpr int MAX_SIZE = 32768;
 #ifdef WINDOWS
     WSABUF wsaBuf{MAX_SIZE, buffer};
 #endif
     char buffer[MAX_SIZE]{};
     size_t size = 0;
     char *p_current = buffer;
+
+    char operator[](const int index) const {
+        return buffer[index];
+    }
 
     SocketBuffer() = default;
 
@@ -151,15 +157,22 @@ struct AsyncSocket {
     socket_type socket;
 
     bool closed = false;
+    std::queue<std::shared_ptr<SocketBuffer> > data_buffers{};
 
 public:
     AsyncSocket(const IOType type, const socket_type socket)
         : type(type), socket(socket) {
     }
 
-    [[nodiscard]] size_t async_write(const SocketBuffer &buffer) const {
+    [[nodiscard]] ssize_t async_write(const SocketBuffer &buffer) const {
         const auto has_sent = buffer.p_current - buffer.buffer;
         return write(socket, buffer.p_current, buffer.size - has_sent);
+    }
+
+    void async_send(const std::vector<std::shared_ptr<SocketBuffer> > &data) {
+        for (const auto &buffer: data) {
+            data_buffers.emplace(buffer);
+        }
     }
 
     void async_close() {

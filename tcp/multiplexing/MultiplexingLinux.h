@@ -9,6 +9,7 @@
 #include <thread>
 
 #include "Multiplexing.h"
+#include "SocketPool.h"
 #include "../../common/Predefined.h"
 
 #ifdef LINUX
@@ -39,6 +40,8 @@ class MultiplexingLinux final : public Multiplexing {
     std::vector<int> m_epoll_list;
     std::vector<int> m_events_list;
 
+    SocketPool m_socket_pool{};
+
     ConnectionBehavior m_behavior;
 
     Logger *m_logger = nullptr;
@@ -64,7 +67,9 @@ class MultiplexingLinux final : public Multiplexing {
 
     bool async_accept(int epoll_fd);
 
-    bool async_receive(int epoll_fd, int client_fd, SocketBuffer &buffer) const;
+    bool async_receive(int epoll_fd, int client_fd, SocketBuffer &buffer);
+
+    bool async_send(int client_fd);
 
     void notify_stop();
 

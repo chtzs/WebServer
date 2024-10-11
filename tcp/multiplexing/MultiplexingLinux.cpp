@@ -49,14 +49,17 @@ bool MultiplexingLinux::async_accept(const int epoll_fd) {
     return add_to_epoll(epoll_fd, client_fd);
 }
 
-bool MultiplexingLinux::async_receive(const int epoll_fd, const int client_fd, SocketBuffer &buffer) const {
+bool MultiplexingLinux::async_receive(const int epoll_fd, const int client_fd, SocketBuffer &buffer) {
     // m_logger->info("Receiving data from connection.");
-    AsyncSocket socket{AsyncSocket::IOType::CLIENT_READ, client_fd};
+    AsyncSocket *socket = m_socket_pool.get_or_default(
+        client_fd, AsyncSocket::IOType::CLIENT_READ);
+
     auto close_socket = [this, client_fd, epoll_fd]() {
         if (epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, nullptr) == -1) {
             m_logger->error("Failed to receive data from client");
             return false;
         }
+        m_socket_pool.delete_socket(client_fd);
         close(client_fd);
         return true;
     };
@@ -65,8 +68,8 @@ bool MultiplexingLinux::async_receive(const int epoll_fd, const int client_fd, S
     // Read util ret <= 0. Epoll only notice once while receiving data, so we need to read them all from buffer.
     while (ret > 0) {
         buffer.size = ret;
-        m_behavior.on_received(&socket, buffer);
-        if (socket.closed) {
+        m_behavior.on_received(socket, buffer);
+        if (socket->closed) {
             return close_socket();
         }
         ret = recv(client_fd, buffer.buffer, sizeof(buffer.buffer), 0);
@@ -79,6 +82,77 @@ bool MultiplexingLinux::async_receive(const int epoll_fd, const int client_fd, S
         return close_socket();
     }
     return true;
+}
+
+bool MultiplexingLinux::async_send(int client_fd) {
+    if (m_socket_pool.has_socket(client_fd)) {
+        AsyncSocket *socket = m_socket_pool.get_or_default(client_fd);
+        auto &queue = socket->data_buffers;
+        while (!queue.empty()) {
+            auto &send_buffer = queue.front();
+            auto ret = socket->async_write(*send_buffer);
+            while (ret > 0) {
+                send_buffer->p_current += ret;
+                if (send_buffer->p_current - send_buffer->buffer == send_buffer->size) break;
+                ret = socket->async_write(*send_buffer);
+            }
+            // m_logger->info("Sending %lu bytes", send_buffer->size);
+            if (ret == -1) {
+                if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                    m_socket_pool.delete_socket(client_fd);
+                    close(client_fd);
+                    return false;
+                }
+            }
+            if (send_buffer->p_current - send_buffer->buffer == send_buffer->size) {
+                queue.pop();
+                // m_logger->info("Pop");
+            }
+        }
+        // m_logger->info("Size of queue: %d\n", queue.size());
+    }
+    return true;
+}
+
+void MultiplexingLinux::thread_receive_write_loop(const int id) {
+    std::vector<epoll_event> events(number_of_events);
+    SocketBuffer buffer{};
+    const int epoll_fd = m_epoll_list[id];
+    while (!m_is_shutdown) {
+        const int num_events = epoll_wait(epoll_fd, events.data(), number_of_events, -1);
+
+        if (num_events < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            exit_with_error("Polling failed");
+        }
+
+        m_logger->info("Count: %d\n", num_events);
+        m_events_list[id] = num_events;
+
+        for (int i = 0; i < num_events; i++) {
+            auto &event = events[i];
+            const int current_fd = event.data.fd;
+            // Shutdown
+            if (current_fd == m_shutdown_event_fd) {
+                return;
+            }
+
+            if (!(event.events & EPOLLIN)) continue;
+            if (current_fd == m_socket_listen) {
+                m_logger->info("Impossible");
+            } else {
+                if (!async_receive(epoll_fd, current_fd, buffer)) {
+                    m_logger->info("Client accidentally disconnected");
+                }
+                if (!async_send(current_fd)) {
+                    m_logger->info("Client disconnected while sending data");
+                }
+            }
+        }
+    }
+    close(epoll_fd);
 }
 
 void MultiplexingLinux::main_accept_loop() {
@@ -138,43 +212,6 @@ void MultiplexingLinux::main_accept_loop() {
         }
     }
     close(m_main_epoll_fd);
-}
-
-void MultiplexingLinux::thread_receive_write_loop(const int id) {
-    std::vector<epoll_event> events(number_of_events);
-    SocketBuffer buffer{};
-    const int epoll_fd = m_epoll_list[id];
-    while (!m_is_shutdown) {
-        const int num_events = epoll_wait(epoll_fd, events.data(), number_of_events, -1);
-
-        if (num_events < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            exit_with_error("Polling failed");
-        }
-
-        m_logger->info("Count: %d\n", num_events);
-        m_events_list[id] = num_events;
-
-        for (int i = 0; i < num_events; i++) {
-            auto &event = events[i];
-            // Shutdown
-            if (event.data.fd == m_shutdown_event_fd) {
-                return;
-            }
-
-            if (!(event.events & EPOLLIN)) continue;
-            if (event.data.fd == m_socket_listen) {
-                m_logger->info("Impossible");
-            } else {
-                if (!async_receive(epoll_fd, event.data.fd, buffer)) {
-                    m_logger->info("Client accidentally disconnected");
-                }
-            }
-        }
-    }
-    close(epoll_fd);
 }
 
 void MultiplexingLinux::set_callback(const ConnectionBehavior &behavior) {
