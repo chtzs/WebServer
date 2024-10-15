@@ -76,60 +76,42 @@ bool MultiplexingLinux::async_accept(const int epoll_fd) {
 }
 
 bool MultiplexingLinux::async_receive(
-    const int epoll_fd,
-    const int client_fd,
+    AsyncSocket *socket,
     SocketBuffer &buffer) {
-    // m_logger->info("Receiving data from connection.");
-    AsyncSocket *socket = m_socket_pool.get_or_default(
-        client_fd, AsyncSocket::IOType::CLIENT_READ);
-
-    auto ret = recv(client_fd, buffer.buffer, sizeof(buffer.buffer), 0);
+    auto ret = recv(socket->get_socket(), buffer.buffer, sizeof(buffer.buffer), 0);
     // Read util ret <= 0. Epoll only notice once while receiving data, so we need to read them all from buffer.
     while (ret > 0) {
         buffer.size = ret;
         m_behavior.on_received(socket, buffer);
-        // if (socket->is_closed()) {
-        //     return close_socket(epoll_fd, client_fd);
-        // }
-        ret = recv(client_fd, buffer.buffer, sizeof(buffer.buffer), 0);
+        ret = recv(socket->get_socket(), buffer.buffer, sizeof(buffer.buffer), 0);
     }
-    if (errno != EAGAIN && errno != EWOULDBLOCK) {
-        return close_socket(epoll_fd, client_fd);
-    }
-    return true;
+    return errno == EAGAIN || errno == EWOULDBLOCK;
 }
 
-bool MultiplexingLinux::async_send(const int client_fd) {
-    if (m_socket_pool.has_socket(client_fd)) {
-        AsyncSocket *socket = m_socket_pool.get_or_default(client_fd);
-        auto &queue = socket->data_buffers;
-        while (!queue.empty()) {
-            auto &send_buffer = queue.front();
-            auto ret = socket->async_write(*send_buffer);
-            while (ret > 0) {
-                send_buffer->p_current += ret;
-                if (send_buffer->p_current - send_buffer->buffer == send_buffer->size) break;
-                ret = socket->async_write(*send_buffer);
-            }
-            // m_logger->info("Sending %lu bytes", send_buffer->size);
-            if (ret == -1) {
-                if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                    m_socket_pool.delete_socket(client_fd);
-                    close(client_fd);
-                    m_logger->info("errno: %d", errno);
-                    return false;
-                }
-            }
-            if (send_buffer->p_current - send_buffer->buffer == send_buffer->size) {
-                queue.pop();
-                // m_logger->info("Pop");
+bool MultiplexingLinux::async_send(AsyncSocket *socket) {
+    auto &queue = socket->send_queue;
+    if (queue.has_uncommitted_data()) {
+        queue.commit();
+    }
+    while (!queue.empty()) {
+        auto &send_buffer = queue.get_next_data();
+        auto ret = socket->async_write(*send_buffer);
+        while (ret > 0) {
+            send_buffer->p_current += ret;
+            if (send_buffer->p_current - send_buffer->buffer == send_buffer->size) break;
+            ret = socket->async_write(*send_buffer);
+        }
+        if (ret == -1) {
+            if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                m_logger->error("Error while sending message. errno: %d", errno);
+                return false;
             }
         }
-        // m_logger->info("Size of queue: %d\n", queue.size());
-        m_behavior.then_response(m_socket_pool.get_or_default(client_fd));
-    } else {
-        m_logger->error("Impossible");
+        if (send_buffer->p_current - send_buffer->buffer == send_buffer->size) {
+            queue.move_next_data();
+        }
     }
+    m_behavior.then_respond(socket);
     return true;
 }
 
@@ -161,19 +143,22 @@ void MultiplexingLinux::thread_receive_write_loop(const int id) {
             if (current_fd == m_socket_listen) {
                 m_logger->info("Impossible");
             } else {
-                buffer.size = 0;
-                if (!async_receive(epoll_fd, current_fd, buffer)) {
+                AsyncSocket *socket = m_socket_pool.get_or_default(current_fd);
+                bool should_close = false;
+                if (!async_receive(socket, buffer)) {
                     m_logger->info("Client accidentally disconnected");
+                    should_close = true;
                 }
-                if (!async_send(current_fd)) {
+                if (!async_send(socket)) {
                     m_logger->info("Client disconnected while sending data");
+                    should_close = true;
                 }
-                if (m_socket_pool.has_socket(current_fd)) {
-                    AsyncSocket *socket = m_socket_pool.get_or_default(current_fd);
-                    if (socket->is_closed()) {
-                        close_socket(epoll_fd, current_fd);
-                        socket->reset();
+                should_close |= socket->is_closed();
+                if (should_close) {
+                    if (!close_socket(epoll_fd, current_fd)) {
+                        m_logger->error("Failed to close socket");
                     }
+                    socket->reset();
                 }
             }
         }

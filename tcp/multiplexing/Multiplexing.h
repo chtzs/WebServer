@@ -122,7 +122,7 @@ public:
     void reset() {
         m_is_closed = false;
         m_is_read_closed = false;
-        data_buffers.clear();
+        send_queue.clear();
     }
 #endif
 #ifdef WINDOWS

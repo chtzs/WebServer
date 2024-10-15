@@ -68,9 +68,9 @@ class MultiplexingLinux final : public Multiplexing {
 
     bool async_accept(int epoll_fd);
 
-    bool async_receive(int epoll_fd, int client_fd, SocketBuffer &buffer);
+    bool async_receive(AsyncSocket *socket, SocketBuffer &buffer);
 
-    bool async_send(int client_fd);
+    bool async_send(AsyncSocket *socket);
 
     void notify_stop();
 
@@ -80,7 +80,7 @@ public:
     explicit MultiplexingLinux(
         socket_type socket_listen,
         int number_of_threads = 12,
-        int number_of_events = 30000
+        int number_of_events = 3000
     );
 
     ~MultiplexingLinux() override;
