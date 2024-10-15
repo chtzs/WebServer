@@ -33,12 +33,16 @@ class MultiplexingWindows final : public Multiplexing {
 
     void exit_with_error(const std::string &message) const;
 
+    void add_to_iocp(socket_type socket) const;
+
+    void set_non_blocking(socket_type socket) const;
+
     // Send accept request to IOCP
-    void async_accept(AsyncSocket *reused) const;
+    void async_post_accept(AsyncSocket *reused) const;
 
     void do_receive(AsyncSocket *async_socket, DWORD lpNumberOfBytesTransferred);
 
-    void async_send(AsyncSocket *reused) const;
+    void async_post_send(AsyncSocket *async_socket) const;
 
     void do_send(AsyncSocket *async_socket);
 
@@ -56,7 +60,7 @@ public:
     /// @param number_of_events Maximum number of simultaneous clients on a single web server
     explicit MultiplexingWindows(
         socket_type socket_listen,
-        int number_of_threads = 20,
+        int number_of_threads = 1,
         int number_of_events = 3000
     );
 

@@ -13,9 +13,34 @@ using std::lock_guard;
 
 template<typename Type>
 class SafeQueue {
-    mutex queue_mtx;
-    std::queue<Type> queue;
+    mutex queue_mtx{};
+    std::queue<Type> queue{};
+
 public:
+    SafeQueue() = default;
+
+    SafeQueue(const SafeQueue &other)
+        : queue(other.queue) {
+    }
+
+    SafeQueue(SafeQueue &&other) noexcept
+        : queue(std::move(other.queue)) {
+    }
+
+    SafeQueue &operator=(const SafeQueue &other) {
+        if (this == &other)
+            return *this;
+        queue = other.queue;
+        return *this;
+    }
+
+    SafeQueue &operator=(SafeQueue &&other) noexcept {
+        if (this == &other)
+            return *this;
+        queue = std::move(other.queue);
+        return *this;
+    }
+
     void push(const Type &t) {
         lock_guard lock{queue_mtx};
         queue.push(t);
@@ -45,6 +70,13 @@ public:
     bool empty() {
         lock_guard lock{queue_mtx};
         return queue.empty();
+    }
+
+    void clear() {
+        lock_guard lock{queue_mtx};
+        while (!queue.empty()) {
+            queue.pop();
+        }
     }
 };
 

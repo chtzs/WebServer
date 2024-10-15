@@ -27,7 +27,8 @@ add_executable(WebServer main.cpp
         http/HttpRequestParser.h
         http/HttpResponse.h
         http/HttpStatus.h
-        tcp/multiplexing/SocketPool.h)
+        tcp/multiplexing/SocketPool.h
+        common/SendQueue.h)
 
 if (WIN32)
     #    target_link_libraries(WebServer libwsock32.a)

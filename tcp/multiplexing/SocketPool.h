@@ -27,7 +27,7 @@ public:
 
     AsyncSocket *get_or_default(
         const socket_type socket_fd,
-        const AsyncSocket::IOType io_type = AsyncSocket::IOType::UNKNOWN) {
+        const AsyncSocket::IOType io_type = AsyncSocket::IOType::CLIENT_READ) {
         AsyncSocket *socket = nullptr;
         std::lock_guard lock(m_mutex);
         if (m_sockets.count(socket_fd) == 0) {

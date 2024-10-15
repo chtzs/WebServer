@@ -43,20 +43,20 @@ void on_received(AsyncSocket *socket, const SocketBuffer &buffer) {
 
             // 读取文件内容到vector中
             file_buffer = std::vector<char>(size);
-            if (!ifs.read(file_buffer.data(), size)) {
-                ifs.close();
-                return;
-            }
+            ifs.read(file_buffer.data(), size);
             file_cache.insert(filename, file_buffer);
         }
         ifs.close();
 
+        // std::cout << "Read file." << std::endl;
         HttpResponse response{status};
         response.set_content_type_by_url(parser.request.url);
 
         auto socket_buffers = response.get_response(file_buffer);
 
+        // std::cout << "Send buffer." << std::endl;
         socket->async_send(*socket_buffers);
+        socket->close_read();
     }
 }
 
@@ -64,7 +64,7 @@ int main() {
     TcpServer server("0.0.0.0");
     ConnectionBehavior behavior;
     behavior.on_received = on_received;
-    behavior.then_response = [&server](AsyncSocket *socket) {
+    behavior.then_respond = [&server](AsyncSocket *socket) {
         socket->async_close();
         request_parsers.remove(socket->get_socket());
     };
