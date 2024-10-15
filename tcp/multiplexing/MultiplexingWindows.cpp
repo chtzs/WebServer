@@ -6,6 +6,24 @@
 #ifdef WINDOWS
 #include <iostream>
 
+[[nodiscard]] static ssize_t async_write(AsyncSocket *async_socket, SocketBuffer &buffer) {
+    const DWORD has_sent = buffer.p_current - buffer.buffer;
+    if (has_sent >= buffer.size) return 0;
+    const DWORD size = buffer.size - has_sent;
+    DWORD bytes_sent = 0;
+    WSABUF buf{.len = size, .buf = buffer.p_current};
+    const int ret = WSASend(async_socket->get_socket(), &buf, 1, &bytes_sent, 0, &async_socket->helper.overlapped,
+                            nullptr);
+    if (ret != NOERROR) {
+        auto err = GetLastError();
+        if (err != WSA_IO_PENDING) {
+            return -1;
+        }
+        return 0;
+    }
+    return bytes_sent;
+}
+
 void MultiplexingWindows::exit_with_error(const std::string &message) const {
     m_logger->error(message.c_str());
     exit(-1);
@@ -45,7 +63,7 @@ void MultiplexingWindows::set_callback(const ConnectionBehavior &behavior) {
     m_behavior = behavior;
 }
 
-void MultiplexingWindows::async_accept(AsyncSocket *reused = nullptr) {
+void MultiplexingWindows::async_accept(AsyncSocket *reused = nullptr) const {
     // Create a normal socket
     const SOCKET client = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
 
@@ -53,25 +71,24 @@ void MultiplexingWindows::async_accept(AsyncSocket *reused = nullptr) {
     // Reused one to save time of allocating memory.
     if (reused) {
         async_socket = reused;
-        async_socket->reset();
-        async_socket->socket = client;
-        async_socket->type = AsyncSocket::IOType::CLIENT_READ;
+        async_socket->reset(AsyncSocket::IOType::CLIENT_READ, client);
     } else {
-        async_socket = new AsyncSocket(AsyncSocket::IOType::CLIENT_READ, client, &m_available_buffers);
+        async_socket = new AsyncSocket(AsyncSocket::IOType::CLIENT_READ, client);
     }
 
     // Send accept request to IOCP. If done, the next step is to receive data from client.
     // So async_socket->type = AsyncSocket::IOType::CLIENT_READ;
     if (!AcceptEx(m_socket_listen,
                   client,
-                  async_socket->lpOutputBuf,
+                  async_socket->helper.lpOutputBuf,
                   0,
                   sizeof(sockaddr_in) + 16,
                   sizeof(sockaddr_in) + 16,
-                  &async_socket->n_buffer_bytes,
-                  &async_socket->overlapped)) {
+                  &async_socket->nBytes,
+                  &async_socket->helper.overlapped)) {
         // WSA_IO_PENDING means waiting util IOCP is ready to handle event.
         if (WSAGetLastError() != WSA_IO_PENDING) {
+            shutdown(client, SD_BOTH);
             closesocket(client);
             delete async_socket;
             exit(-1);
@@ -94,9 +111,87 @@ void MultiplexingWindows::async_accept(AsyncSocket *reused = nullptr) {
     }
 }
 
+void MultiplexingWindows::do_receive(AsyncSocket *async_socket, const DWORD lpNumberOfBytesTransferred) {
+    DWORD dwFlags;
+    // Data now is ready
+    async_socket->buffer.size = lpNumberOfBytesTransferred;
+    // Callback
+    if (lpNumberOfBytesTransferred > 0)
+        m_behavior.on_received(async_socket, async_socket->buffer);
+
+    bool should_close = false;
+    // If async_socket->closed is true, it means client want to close it immediately.
+    if (!async_socket->is_closed()) {
+        // Otherwise, send Receive request to IOCP.
+        const auto receive_ret = WSARecv(
+            async_socket->get_socket(),
+            &async_socket->buffer.wsaBuf,
+            1,
+            &async_socket->nBytes,
+            &dwFlags,
+            &async_socket->helper.overlapped,
+            nullptr);
+
+        auto error = WSAGetLastError();
+        should_close |= receive_ret == SOCKET_ERROR && error != WSA_IO_PENDING;
+        should_close |= error == 0 && async_socket->nBytes == 0;
+    } else {
+        should_close = true;
+    }
+
+    // async_socket->async_close();
+    if (should_close) {
+        shutdown(async_socket->get_socket(), SD_BOTH);
+        closesocket(async_socket->get_socket());
+        // Memory friendly
+        // Send another accept request because we consume one.
+        async_accept(async_socket);
+    } else {
+        if (!async_socket->data_buffers.empty())
+            async_send(async_socket);
+    }
+}
+
+void MultiplexingWindows::async_send(AsyncSocket *reused) const {
+    if (reused->data_buffers.empty()) return;
+    AsyncSocket *send_socket = new AsyncSocket(AsyncSocket::IOType::CLIENT_WRITE, reused->get_socket());
+    send_socket->data_buffers = std::move(reused->data_buffers);
+    const int ret = PostQueuedCompletionStatus(
+        iocp_handle,
+        0,
+        0,
+        &send_socket->helper.overlapped);
+    if (!ret) {
+        shutdown(send_socket->get_socket(), SD_BOTH);
+        closesocket(send_socket->get_socket());
+        delete send_socket;
+        m_logger->error("Failed to post iocp overlapped call");
+    }
+}
+
+void MultiplexingWindows::do_send(AsyncSocket *async_socket) {
+    auto &queue = async_socket->data_buffers;
+
+    ssize_t ret = -1;
+    while (!queue.empty()) {
+        auto &send_buffer = queue.front();
+        ret = async_socket->async_write(*send_buffer);
+        while (ret > 0) {
+            send_buffer->p_current += ret;
+            if (send_buffer->p_current - send_buffer->buffer == send_buffer->size)
+                break;
+            ret = async_socket->async_write(*send_buffer);
+        }
+        if (send_buffer->p_current - send_buffer->buffer == send_buffer->size) {
+            queue.pop();
+        }
+    }
+    // m_logger->info("%d", ret);
+    delete async_socket;
+}
+
 void MultiplexingWindows::async_work() {
     DWORD lpNumberOfBytesTransferred;
-    DWORD dwFlags;
     void *lpCompletionKey = nullptr;
     AsyncSocket *async_socket = nullptr;
 
@@ -107,56 +202,26 @@ void MultiplexingWindows::async_work() {
         const BOOL ret = GetQueuedCompletionStatus(
             iocp_handle,
             &lpNumberOfBytesTransferred,
-            (PULONG_PTR) &lpCompletionKey,
-            (LPOVERLAPPED *) &async_socket,
+            reinterpret_cast<PULONG_PTR>(&lpCompletionKey),
+            reinterpret_cast<LPOVERLAPPED *>(&async_socket),
             INFINITE);
         if (!ret)
             continue;
 
+        // m_logger->info("Closed: %d", socket_connected(async_socket->get_socket()));
         // Shutdown command
         if (lpNumberOfBytesTransferred == -1) {
             delete async_socket;
             break;
         }
 
-        switch (async_socket->type) {
-            case AsyncSocket::IOType::CLIENT_READ: {
-                // Data now is ready
-                async_socket->buffer.size = lpNumberOfBytesTransferred;
-                // Callback
-                m_behavior.on_received(async_socket, async_socket->buffer);
-
-                bool should_close = false;
-                // If async_socket->closed is true, it means client want to close it immediately.
-                if (!async_socket->closed) {
-                    // Otherwise, send Receive request to IOCP.
-                    const auto receive_ret = WSARecv(
-                        async_socket->socket,
-                        &async_socket->buffer.wsaBuf,
-                        1,
-                        &async_socket->n_buffer_bytes,
-                        &dwFlags,
-                        &async_socket->overlapped,
-                        nullptr);
-
-                    auto error = WSAGetLastError();
-                    should_close |= receive_ret == SOCKET_ERROR && error != WSA_IO_PENDING;
-                } else {
-                    should_close = true;
-                }
-
-                if (should_close) {
-                    closesocket(async_socket->socket);
-                    // Memory friendly
-                    // Send another accept request because we consume one.
-                    async_accept(async_socket);
-                }
-            }
-            break;
-            case AsyncSocket::IOType::CLIENT_WRITE: {
-                m_available_buffers.push(async_socket);
-            }
-            break;
+        switch (async_socket->get_type()) {
+            case AsyncSocket::IOType::CLIENT_READ:
+                do_receive(async_socket, lpNumberOfBytesTransferred);
+                break;
+            case AsyncSocket::IOType::CLIENT_WRITE:
+                do_send(async_socket);
+                break;
             default:
                 break;
         }

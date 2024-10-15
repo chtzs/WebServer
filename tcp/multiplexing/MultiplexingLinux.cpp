@@ -4,6 +4,20 @@
 
 #include "MultiplexingLinux.h"
 #ifdef LINUX
+#include "../../http/HttpResponse.h"
+#include <fstream>
+
+bool MultiplexingLinux::close_socket(const int epoll_fd, const socket_type client_fd) const {
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, nullptr) == -1) {
+        m_logger->error("Failed to remove socket from epoll: %d, errno: %d", epoll_fd, errno);
+        return false;
+    }
+    // m_logger->info("Removed socket: %d", client_fd);
+    // m_socket_pool.delete_socket(client_fd);
+    // shutdown(client_fd, SHUT_RDWR);
+    close(client_fd);
+    return true;
+}
 
 void MultiplexingLinux::exit_with_error(const std::string &message) const {
     m_logger->error(message.c_str());
@@ -16,7 +30,8 @@ bool MultiplexingLinux::add_to_epoll(const int epoll_fd, const int socket_fd) co
     ev.data.fd = socket_fd;
 
     // Hand over socket_fd to epoll_fd for management
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, socket_fd, &ev) == -1) {
+    int a = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, socket_fd, &ev);
+    if (a == -1) {
         close(epoll_fd);
         m_logger->error("Failed to add socket to epoll file descriptor");
         return false;
@@ -28,6 +43,7 @@ bool MultiplexingLinux::add_to_epoll(const int epoll_fd, const int socket_fd) co
         m_logger->error("Failed to set nonblocking mode");
         return false;
     }
+    // m_logger->info("Socket fd: %d", socket_fd);
     return true;
 }
 
@@ -42,49 +58,48 @@ int MultiplexingLinux::create_epoll_fd() const {
 
 bool MultiplexingLinux::async_accept(const int epoll_fd) {
     // m_logger->info("Accepting new connection.");
-    const int client_fd = accept(m_socket_listen, &m_address, &m_address_len);
-    if (client_fd < 0)
-        return false;
+    while (true) {
+        const int client_fd = accept(m_socket_listen, (sockaddr *) &m_address, &m_address_len);
+        if (client_fd < 0) {
+            if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                return false;
+            } else {
+                break;
+            }
+        }
 
-    return add_to_epoll(epoll_fd, client_fd);
+        if (!add_to_epoll(epoll_fd, client_fd)) {
+            return false;
+        }
+    }
+    return true;
 }
 
-bool MultiplexingLinux::async_receive(const int epoll_fd, const int client_fd, SocketBuffer &buffer) {
+bool MultiplexingLinux::async_receive(
+    const int epoll_fd,
+    const int client_fd,
+    SocketBuffer &buffer) {
     // m_logger->info("Receiving data from connection.");
     AsyncSocket *socket = m_socket_pool.get_or_default(
         client_fd, AsyncSocket::IOType::CLIENT_READ);
-
-    auto close_socket = [this, client_fd, epoll_fd]() {
-        if (epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, nullptr) == -1) {
-            m_logger->error("Failed to receive data from client");
-            return false;
-        }
-        m_socket_pool.delete_socket(client_fd);
-        close(client_fd);
-        return true;
-    };
 
     auto ret = recv(client_fd, buffer.buffer, sizeof(buffer.buffer), 0);
     // Read util ret <= 0. Epoll only notice once while receiving data, so we need to read them all from buffer.
     while (ret > 0) {
         buffer.size = ret;
         m_behavior.on_received(socket, buffer);
-        if (socket->closed) {
-            return close_socket();
-        }
+        // if (socket->is_closed()) {
+        //     return close_socket(epoll_fd, client_fd);
+        // }
         ret = recv(client_fd, buffer.buffer, sizeof(buffer.buffer), 0);
     }
-    if (ret < 0) {
-        if (errno != EAGAIN && errno != EWOULDBLOCK) {
-            return close_socket();
-        }
-    } else {
-        return close_socket();
+    if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        return close_socket(epoll_fd, client_fd);
     }
     return true;
 }
 
-bool MultiplexingLinux::async_send(int client_fd) {
+bool MultiplexingLinux::async_send(const int client_fd) {
     if (m_socket_pool.has_socket(client_fd)) {
         AsyncSocket *socket = m_socket_pool.get_or_default(client_fd);
         auto &queue = socket->data_buffers;
@@ -101,6 +116,7 @@ bool MultiplexingLinux::async_send(int client_fd) {
                 if (errno != EAGAIN && errno != EWOULDBLOCK) {
                     m_socket_pool.delete_socket(client_fd);
                     close(client_fd);
+                    m_logger->info("errno: %d", errno);
                     return false;
                 }
             }
@@ -110,6 +126,9 @@ bool MultiplexingLinux::async_send(int client_fd) {
             }
         }
         // m_logger->info("Size of queue: %d\n", queue.size());
+        m_behavior.then_response(m_socket_pool.get_or_default(client_fd));
+    } else {
+        m_logger->error("Impossible");
     }
     return true;
 }
@@ -128,8 +147,7 @@ void MultiplexingLinux::thread_receive_write_loop(const int id) {
             exit_with_error("Polling failed");
         }
 
-        m_logger->info("Count: %d\n", num_events);
-        m_events_list[id] = num_events;
+        // m_logger->info("Count: %d\n", num_events);
 
         for (int i = 0; i < num_events; i++) {
             auto &event = events[i];
@@ -143,11 +161,19 @@ void MultiplexingLinux::thread_receive_write_loop(const int id) {
             if (current_fd == m_socket_listen) {
                 m_logger->info("Impossible");
             } else {
+                buffer.size = 0;
                 if (!async_receive(epoll_fd, current_fd, buffer)) {
                     m_logger->info("Client accidentally disconnected");
                 }
                 if (!async_send(current_fd)) {
                     m_logger->info("Client disconnected while sending data");
+                }
+                if (m_socket_pool.has_socket(current_fd)) {
+                    AsyncSocket *socket = m_socket_pool.get_or_default(current_fd);
+                    if (socket->is_closed()) {
+                        close_socket(epoll_fd, current_fd);
+                        socket->reset();
+                    }
                 }
             }
         }
@@ -157,6 +183,7 @@ void MultiplexingLinux::thread_receive_write_loop(const int id) {
 
 void MultiplexingLinux::main_accept_loop() {
     std::vector<epoll_event> events(number_of_events);
+    int assign_index = 0;
     while (!m_is_shutdown) {
         const int num_events = epoll_wait(m_main_epoll_fd, events.data(), number_of_events, -1);
 
@@ -167,46 +194,26 @@ void MultiplexingLinux::main_accept_loop() {
             exit_with_error("Polling failed");
         }
 
-        // Automatically assign the accepted connection to the receiving/writing thread to process the data.
-        std::vector<int> copy; {
-            std::lock_guard lock(m_assign_mutex);
-            copy = m_events_list;
-        }
-        std::vector<int> copy_indices(number_of_threads);
-        for (int i = 0; i < number_of_threads; ++i) {
-            copy_indices[i] = i;
-        }
-
-        std::sort(copy_indices.begin(), copy_indices.end(), [&copy](int a, int b) {
-            return copy[a] < copy[b];
-        });
-        // [0, 1, ... assign_index] is an increased order
-        int assign_index = 0;
-
         for (int i = 0; i < num_events; i++) {
             auto &event = events[i];
             // Shutdown
             if (event.data.fd == m_shutdown_event_fd) {
+                close(m_main_epoll_fd);
                 return;
             }
 
             if (!(event.events & EPOLLIN)) continue;
+
             if (event.data.fd != m_socket_listen) {
                 m_logger->error("Impossible");
                 continue;
             }
-            if (!async_accept(m_epoll_list[assign_index])) {
+
+            // Round-robin
+            if (!async_accept(m_epoll_list[assign_index++])) {
                 m_logger->info("Failed to accept connection");
             }
-
-            copy[assign_index]++;
-
-            // Get the next suitable thread index
-            if (assign_index < number_of_threads - 1
-                && copy[assign_index] > copy[assign_index + 1]) {
-                assign_index++;
-            } else if (assign_index == number_of_threads - 1
-                       && (assign_index == 0 || copy[assign_index] >= copy[assign_index - 1])) {
+            if (assign_index >= number_of_threads) {
                 assign_index = 0;
             }
         }
@@ -292,11 +299,10 @@ MultiplexingLinux::MultiplexingLinux(
     const int number_of_events)
     : m_socket_listen(socket_listen),
       number_of_threads(number_of_threads),
-      number_of_events(number_of_events),
-      m_events_list(number_of_threads) {
+      number_of_events(number_of_events) {
     m_logger = Logger::get_logger();
     m_address_len = sizeof(sockaddr_in);
-    getsockname(m_socket_listen, &m_address, &m_address_len);
+    getsockname(m_socket_listen, (sockaddr *) &m_address, &m_address_len);
 }
 
 MultiplexingLinux::~MultiplexingLinux() {

@@ -15,10 +15,11 @@ add_executable(WebServer main.cpp
         thread_pool/Worker.cpp
         thread_pool/Worker.h
         thread_pool/SharedContext.h
-        thread_pool/SafeQueue.h
         tcp/multiplexing/MultiplexingLinux.cpp
         tcp/multiplexing/MultiplexingLinux.h
         common/Predefined.h
+        common/SafeQueue.h
+        common/SafeMap.h
         tcp/multiplexing/Multiplexing.h
         tcp/multiplexing/MultiplexingWindows.cpp
         tcp/multiplexing/MultiplexingWindows.h

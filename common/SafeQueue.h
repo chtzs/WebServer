@@ -17,33 +17,33 @@ class SafeQueue {
     std::queue<Type> queue;
 public:
     void push(const Type &t) {
-        lock_guard<mutex> lock{queue_mtx};
+        lock_guard lock{queue_mtx};
         queue.push(t);
     }
 
     void pop() {
-        lock_guard<mutex> lock{queue_mtx};
+        lock_guard lock{queue_mtx};
         queue.pop();
     }
 
     void pop(Type &out) {
-        lock_guard<mutex> lock{queue_mtx};
+        lock_guard lock{queue_mtx};
         out = queue.front();
         queue.pop();
     }
 
     Type &front() {
-        lock_guard<mutex> lock{queue_mtx};
+        lock_guard lock{queue_mtx};
         return queue.front();
     }
 
     size_t size() {
-        lock_guard<mutex> lock{queue_mtx};
+        lock_guard lock{queue_mtx};
         return queue.size();
     }
 
     bool empty() {
-        lock_guard<mutex> lock{queue_mtx};
+        lock_guard lock{queue_mtx};
         return queue.empty();
     }
 };

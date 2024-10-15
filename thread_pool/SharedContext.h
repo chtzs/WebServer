@@ -12,7 +12,7 @@
 #include <vector>
 #include "Task.h"
 #include "Worker.h"
-#include "SafeQueue.h"
+#include "../common/SafeQueue.h"
 
 using std::shared_ptr;
 using std::make_shared;

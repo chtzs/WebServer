@@ -6,8 +6,8 @@
 #define HTTP_STATUS_H
 
 enum class HttpStatus {
-    STATUS_200 = 200,
-    STATUS_404 = 404
+    STATUS_OK = 200,
+    STATUS_NOT_FOUND = 404
 };
 
 

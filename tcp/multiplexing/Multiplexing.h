@@ -11,7 +11,7 @@
 #include <memory>
 
 #include "../../common/Predefined.h"
-#include "../../thread_pool/SafeQueue.h"
+#include "../../common/SafeQueue.h"
 
 #ifdef LINUX
 #include <unistd.h>
@@ -38,12 +38,12 @@ static long receive_bytes(const socket_type fd, char *buf, const int buf_size) {
 }
 
 struct SocketBuffer {
-    static constexpr int MAX_SIZE = 32768;
+    static constexpr ssize_t MAX_SIZE = 2048;
 #ifdef WINDOWS
     WSABUF wsaBuf{MAX_SIZE, buffer};
 #endif
     char buffer[MAX_SIZE]{};
-    size_t size = 0;
+    ssize_t size = 0;
     char *p_current = buffer;
 
     char operator[](const int index) const {
@@ -78,8 +78,83 @@ struct SocketBuffer {
 
 #ifdef WINDOWS
 
-struct AsyncSocket {
+// struct AsyncSocket {
+//     OVERLAPPED overlapped{};
+//
+//     enum class IOType {
+//         UNKNOWN,
+//         NEW_CONNECTION,
+//         CLIENT_READ,
+//         CLIENT_WRITE
+//     };
+//
+//     IOType type;
+//     socket_type socket;
+//
+//     SocketBuffer buffer{};
+//     DWORD n_buffer_bytes = 0;
+//     char lpOutputBuf[1024]{};
+//     SafeQueue<AsyncSocket *> *available_buffers;
+//
+//     bool closed = false;
+//
+// public:
+//     AsyncSocket(const IOType type, const socket_type socket, SafeQueue<AsyncSocket *> *available_buffers)
+//         : type(type), socket(socket), available_buffers(available_buffers) {
+//     }
+//
+//     void async_close() {
+//         closed = true;
+//     }
+//
+//     [[nodiscard]] size_t async_write(const SocketBuffer &buffer) const {
+//         AsyncSocket *socket_as_buffer;
+//         if (available_buffers->empty()) {
+//             socket_as_buffer = new AsyncSocket(IOType::CLIENT_WRITE, -1, available_buffers);
+//         } else {
+//             socket_as_buffer = available_buffers->front();
+//             available_buffers->pop();
+//         }
+//
+//         const auto has_sent = buffer.p_current - buffer.buffer;
+//         const DWORD size = buffer.size - has_sent;
+//         socket_as_buffer->buffer.wsaBuf.len = size;
+//         DWORD bytes_sent = 0;
+//
+//         auto ret = WSASend(socket, &socket_as_buffer->buffer.wsaBuf, 1, &bytes_sent, 0, &socket_as_buffer->overlapped, nullptr);
+//         if (ret != NOERROR) {
+//             auto err = GetLastError();
+//             if (err != WSA_IO_PENDING) {
+//                 exit(-1);
+//             }
+//         }
+//         return bytes_sent;
+//     }
+//
+//     void reset() {
+//         closed = false;
+//         socket = INVALID_SOCKET;
+//         type = IOType::UNKNOWN;
+//         buffer.wsaBuf.len = SocketBuffer::MAX_SIZE;
+//         memset(&overlapped, 0, sizeof(OVERLAPPED));
+//     }
+// };
+
+struct WSAHelper {
     OVERLAPPED overlapped{};
+    char lpOutputBuf[SocketBuffer::MAX_SIZE]{};
+    SocketBuffer buffer{};
+};
+
+#endif
+
+struct AsyncSocket {
+public:
+#ifdef WINDOWS
+    WSAHelper helper{};
+    SocketBuffer buffer{};
+    DWORD nBytes{};
+#endif
 
     enum class IOType {
         UNKNOWN,
@@ -88,101 +163,68 @@ struct AsyncSocket {
         CLIENT_WRITE
     };
 
-    IOType type;
-    socket_type socket;
+private:
+    IOType m_type = IOType::UNKNOWN;
+    socket_type m_socket;
 
-    SocketBuffer buffer{};
-    DWORD n_buffer_bytes = 0;
-    char lpOutputBuf[1024]{};
-    SafeQueue<AsyncSocket *> *available_buffers;
-
-    bool closed = false;
+    bool m_is_closed = false;
 
 public:
-    AsyncSocket(const IOType type, const socket_type socket, SafeQueue<AsyncSocket *> *available_buffers)
-        : type(type), socket(socket), available_buffers(available_buffers) {
+    std::queue<std::shared_ptr<SocketBuffer> > data_buffers{};
+
+    AsyncSocket(const IOType type, const socket_type socket)
+        : m_type(type), m_socket(socket) {
     }
-
-    void async_close() {
-        closed = true;
-    }
-
-    [[nodiscard]] size_t async_write(const SocketBuffer &buffer) const {
-        AsyncSocket *socket_as_buffer;
-        if (available_buffers->empty()) {
-            socket_as_buffer = new AsyncSocket(IOType::CLIENT_WRITE, -1, available_buffers);
-        } else {
-            socket_as_buffer = available_buffers->front();
-            available_buffers->pop();
-        }
-
+#ifdef LINUX
+    [[nodiscard]] ssize_t async_write(const SocketBuffer &buffer) const {
         const auto has_sent = buffer.p_current - buffer.buffer;
-        const DWORD size = buffer.size - has_sent;
-        socket_as_buffer->buffer.wsaBuf.len = size;
-        DWORD bytes_sent = 0;
-
-        auto ret = WSASend(socket, &socket_as_buffer->buffer.wsaBuf, 1, &bytes_sent, 0, &socket_as_buffer->overlapped, nullptr);
-        if (ret != NOERROR) {
-            auto err = GetLastError();
-            if (err != WSA_IO_PENDING) {
-                exit(-1);
-            }
-        }
-        return bytes_sent;
+        return write(m_socket, buffer.p_current, buffer.size - has_sent);
     }
 
     void reset() {
-        closed = false;
-        socket = INVALID_SOCKET;
-        type = IOType::UNKNOWN;
-        buffer.wsaBuf.len = SocketBuffer::MAX_SIZE;
-        memset(&overlapped, 0, sizeof(OVERLAPPED));
+        m_is_closed = false;
     }
-};
 #endif
-
-#ifdef LINUX
-struct AsyncSocket {
-    enum class IOType {
-        UNKNOWN,
-        NEW_CONNECTION,
-        CLIENT_READ,
-        CLIENT_WRITE
-    };
-
-    int epoll_fd = -1;
-    int fd = -1;
-
-    IOType type = IOType::UNKNOWN;
-    socket_type socket;
-
-    bool closed = false;
-    std::queue<std::shared_ptr<SocketBuffer> > data_buffers{};
-
-public:
-    AsyncSocket(const IOType type, const socket_type socket)
-        : type(type), socket(socket) {
+#ifdef WINDOWS
+    void reset(const IOType type, const socket_type socket) {
+        m_type = type;
+        m_socket = socket;
+        m_is_closed = false;
+        buffer.wsaBuf.len = SocketBuffer::MAX_SIZE;
+        memset(&helper.overlapped, 0, sizeof(OVERLAPPED));
     }
 
     [[nodiscard]] ssize_t async_write(const SocketBuffer &buffer) const {
         const auto has_sent = buffer.p_current - buffer.buffer;
-        return write(socket, buffer.p_current, buffer.size - has_sent);
+        return send(m_socket, buffer.p_current, (ssize_t) buffer.size - has_sent, 0);
     }
-
+#endif
     void async_send(const std::vector<std::shared_ptr<SocketBuffer> > &data) {
         for (const auto &buffer: data) {
-            data_buffers.emplace(buffer);
+            // data_buffers.push(buffer);
+            data_buffers.push(buffer);
         }
     }
 
     void async_close() {
-        closed = true;
+        m_is_closed = true;
+    }
+
+    [[nodiscard]] bool is_closed() const {
+        return m_is_closed;
+    }
+
+    [[nodiscard]] socket_type get_socket() const {
+        return m_socket;
+    }
+
+    [[nodiscard]] IOType get_type() const {
+        return m_type;
     }
 };
-#endif
 
 struct ConnectionBehavior {
-    std::function<void(AsyncSocket *, SocketBuffer)> on_received{};
+    std::function<void(AsyncSocket *, SocketBuffer &)> on_received{};
     std::function<void(AsyncSocket *)> then_response{};
 };
 

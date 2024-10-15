@@ -25,7 +25,7 @@ class MultiplexingLinux final : public Multiplexing {
     std::mutex m_mutex{}, m_assign_mutex{};
     std::condition_variable m_condition{};
 
-    sockaddr m_address{};
+    sockaddr_in m_address{};
     socket_len_type m_address_len;
     int m_main_epoll_fd{};
     int m_shutdown_event_fd{};
@@ -38,13 +38,14 @@ class MultiplexingLinux final : public Multiplexing {
 
     std::vector<std::thread> m_working_thread;
     std::vector<int> m_epoll_list;
-    std::vector<int> m_events_list;
 
     SocketPool m_socket_pool{};
 
     ConnectionBehavior m_behavior;
 
     Logger *m_logger = nullptr;
+
+    bool close_socket(int epoll_fd, socket_type client_fd) const;
 
     void exit_with_error(const std::string &message) const;
 
@@ -78,8 +79,8 @@ class MultiplexingLinux final : public Multiplexing {
 public:
     explicit MultiplexingLinux(
         socket_type socket_listen,
-        int number_of_threads = 1,
-        int number_of_events = 3000
+        int number_of_threads = 12,
+        int number_of_events = 30000
     );
 
     ~MultiplexingLinux() override;

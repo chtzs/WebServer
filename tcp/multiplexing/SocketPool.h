@@ -10,7 +10,7 @@
 
 class SocketPool {
     std::unordered_map<socket_type, AsyncSocket *> m_sockets{};
-
+    std::mutex m_mutex{};
 public:
     SocketPool() = default;
 
@@ -20,7 +20,8 @@ public:
         }
     }
 
-    bool has_socket(const socket_type socket_fd) const {
+    bool has_socket(const socket_type socket_fd) {
+        std::lock_guard lock(m_mutex);
         return m_sockets.count(socket_fd) > 0;
     }
 
@@ -28,6 +29,7 @@ public:
         const socket_type socket_fd,
         const AsyncSocket::IOType io_type = AsyncSocket::IOType::UNKNOWN) {
         AsyncSocket *socket = nullptr;
+        std::lock_guard lock(m_mutex);
         if (m_sockets.count(socket_fd) == 0) {
             socket = new AsyncSocket(io_type, socket_fd);
             m_sockets.emplace(socket_fd, socket);
@@ -38,6 +40,7 @@ public:
     }
 
     void delete_socket(const socket_type socket_fd) {
+        std::lock_guard lock(m_mutex);
         if (m_sockets.count(socket_fd) == 0) {
             const auto socket = m_sockets[socket_fd];
             m_sockets.erase(socket_fd);

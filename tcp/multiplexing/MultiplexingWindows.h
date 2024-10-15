@@ -34,7 +34,13 @@ class MultiplexingWindows final : public Multiplexing {
     void exit_with_error(const std::string &message) const;
 
     // Send accept request to IOCP
-    void async_accept(AsyncSocket *reused);
+    void async_accept(AsyncSocket *reused) const;
+
+    void do_receive(AsyncSocket *async_socket, DWORD lpNumberOfBytesTransferred);
+
+    void async_send(AsyncSocket *reused) const;
+
+    void do_send(AsyncSocket *async_socket);
 
     // Send receive or write request to IOCP
     void async_work();

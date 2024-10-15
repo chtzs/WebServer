@@ -22,16 +22,17 @@ class HttpResponse {
     HttpStatus m_status{};
     string m_status_line{};
 
-    static void put_string(const shared_ptr<vector<shared_ptr<SocketBuffer> > > &response, const string &str, SocketBuffer &buffer) {
-        const auto c_str = str.c_str();
-        auto str_begin = c_str;
+    template<typename StrLike>
+    static void put_string(const shared_ptr<vector<shared_ptr<SocketBuffer> > > &response, const StrLike &str,
+                           ssize_t length, SocketBuffer &buffer) {
+        auto str_begin = str.data();
         // auto str_end = str.end();
-        long long int rest_size = str.length();
+        ssize_t rest_size = length;
         while (rest_size > 0) {
             bool create_new = false;
             long long int write_size;
             if (rest_size + buffer.size > SocketBuffer::MAX_SIZE) {
-                write_size = (long long int) SocketBuffer::MAX_SIZE - buffer.size;
+                write_size = SocketBuffer::MAX_SIZE - buffer.size;
                 create_new = true;
             } else {
                 write_size = rest_size;
@@ -51,6 +52,16 @@ class HttpResponse {
         }
     }
 
+    static void put_string(const shared_ptr<vector<shared_ptr<SocketBuffer> > > &response, const string &str,
+                           SocketBuffer &buffer) {
+        return put_string(response, str, str.length(), buffer);
+    }
+
+    static void put_string(const shared_ptr<vector<shared_ptr<SocketBuffer> > > &response, const vector<char> &str,
+                           SocketBuffer &buffer) {
+        return put_string(response, str, str.size(), buffer);
+    }
+
     static bool endsWith(const std::string &str, const std::string &suffix) {
         if (suffix.length() > str.length()) { return false; }
 
@@ -59,9 +70,9 @@ class HttpResponse {
 
 public:
     explicit HttpResponse(const HttpStatus &status) : m_status(status) {
-        if (status == HttpStatus::STATUS_200) {
+        if (status == HttpStatus::STATUS_OK) {
             m_status_line = "HTTP/1.1 200 OK";
-        } else if (status == HttpStatus::STATUS_404) {
+        } else if (status == HttpStatus::STATUS_NOT_FOUND) {
             m_status_line = "HTTP/1.1 404 Not Found";
         }
     }
@@ -88,7 +99,8 @@ public:
         return headers[key];
     }
 
-    shared_ptr<vector<shared_ptr<SocketBuffer> > > get_response(const string &body) const {
+    template<typename StrLike>
+    shared_ptr<vector<shared_ptr<SocketBuffer> > > get_response(const StrLike &body, size_t length) const {
         auto response = std::make_shared<vector<shared_ptr<SocketBuffer> > >();
         SocketBuffer buffer{};
         put_string(response, m_status_line, buffer);
@@ -102,7 +114,7 @@ public:
             put_string(response, "\r\n", buffer);
         }
         put_string(response, "Content-Length: ", buffer);
-        put_string(response, std::to_string(body.length()), buffer);
+        put_string(response, std::to_string(length), buffer);
         put_string(response, "\r\n", buffer);
         put_string(response, "\r\n", buffer);
         put_string(response, body, buffer);
@@ -111,6 +123,14 @@ public:
             response->emplace_back(std::make_shared<SocketBuffer>(buffer));
         }
         return response;
+    }
+
+    shared_ptr<vector<shared_ptr<SocketBuffer> > > get_response(const vector<char> &body) const {
+        return get_response(body, body.size());
+    }
+
+    shared_ptr<vector<shared_ptr<SocketBuffer> > > get_response(const string &body) const {
+        return get_response(body, body.length());
     }
 };
 
