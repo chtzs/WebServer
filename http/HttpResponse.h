@@ -21,6 +21,8 @@ class HttpResponse {
 
     HttpStatus m_status{};
     string m_status_line{};
+    std::shared_ptr<string> m_body_str;
+    std::shared_ptr<vector<char> > m_body_vector;
 
     template<typename StrLike>
     static void put_string(const shared_ptr<vector<shared_ptr<SocketBuffer> > > &response, const StrLike &str,
@@ -69,7 +71,14 @@ class HttpResponse {
     }
 
 public:
-    explicit HttpResponse(const HttpStatus &status) : m_status(status) {
+    explicit HttpResponse() {
+        set_status(HttpStatus::STATUS_OK);
+        m_body_str = std::make_shared<string>();
+        m_body_vector = std::make_shared<vector<char> >();
+    }
+
+    void set_status(const HttpStatus &status) {
+        m_status = status;
         if (status == HttpStatus::STATUS_OK) {
             m_status_line = "HTTP/1.1 200 OK";
         } else if (status == HttpStatus::STATUS_NOT_FOUND) {
@@ -87,8 +96,24 @@ public:
             content_type = "image/gif";
         } else if (endsWith(url, ".bmp")) {
             content_type = "image/bmp";
+        } else if (endsWith(url, ".js")) {
+            content_type = "application/javascript";
+        } else {
+            return;
         }
         insert("Content-Type", content_type);
+    }
+
+    void set_body(string &&body) {
+        m_body_str = std::make_shared<string>(body);
+    }
+
+    void set_body(const std::shared_ptr<string> &body) {
+        m_body_str = body;
+    }
+
+    void set_body(const std::shared_ptr<vector<char> > &body) {
+        m_body_vector = body;
     }
 
     void insert(const string &key, const string &value) {
@@ -131,6 +156,14 @@ public:
 
     shared_ptr<vector<shared_ptr<SocketBuffer> > > get_response(const string &body) const {
         return get_response(body, body.length());
+    }
+
+    shared_ptr<vector<shared_ptr<SocketBuffer> > > get_response() const {
+        if (!m_body_str->empty())
+            return get_response(*m_body_str);
+        else {
+            return get_response(*m_body_vector);
+        }
     }
 };
 
