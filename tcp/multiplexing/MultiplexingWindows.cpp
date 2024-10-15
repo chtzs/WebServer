@@ -156,7 +156,7 @@ void MultiplexingWindows::async_post_send(AsyncSocket *async_socket) const {
     async_socket->set_type(AsyncSocket::IOType::CLIENT_WRITE);
     if (ret < 0) {
         async_socket->async_close();
-        m_logger->error("Failed to post iocp overlapped call");
+        m_logger->error("Failed to send data. Error no: %d", (int)GetLastError());
     }
 }
 
