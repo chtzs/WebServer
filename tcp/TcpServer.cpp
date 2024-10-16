@@ -6,6 +6,7 @@
 
 #include "multiplexing/MultiplexingLinux.h"
 #include "multiplexing/MultiplexingWindows.h"
+#include "multiplexing/MultiplexingWindows2.h"
 
 void TcpServer::exit_with_error(const std::string &message) const {
     m_logger->error(message.c_str());
@@ -55,13 +56,13 @@ void TcpServer::setup() {
 #ifdef WINDOWS
     // Require Windows Socket Api 2.0
     WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 0), &wsaData) != 0) {
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         exit_with_error("WSAStartup failed");
     }
     // Create listen socket with IOCP(WSA_FLAG_OVERLAPPED)
     m_listen_socket = WSASocketW(AF_INET, SOCK_STREAM, IPPROTO_IP, nullptr, 0, WSA_FLAG_OVERLAPPED);
 
-    m_multiplexing = new MultiplexingWindows(m_listen_socket);
+    m_multiplexing = new MultiplexingWindows2(m_listen_socket);
     m_multiplexing->set_callback(m_behavior);
 #elif defined(LINUX)
     // Create the socket with ipv4 and automatic protocol

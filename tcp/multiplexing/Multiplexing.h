@@ -39,11 +39,12 @@ static long receive_bytes(const socket_type fd, char *buf, const int buf_size) {
 }
 
 struct SocketBuffer {
+    // HttpRequestParser requires that MAX_SIZE shouldn't be less than 1024
     static constexpr ssize_t MAX_SIZE = 2048;
-#ifdef WINDOWS
-    WSABUF wsaBuf{MAX_SIZE, buffer};
-#endif
     char buffer[MAX_SIZE]{};
+#ifdef WINDOWS
+    WSABUF wsaBuf{.len = MAX_SIZE, .buf = buffer};
+#endif
     ssize_t size = 0;
     char *p_current = buffer;
 
@@ -52,6 +53,13 @@ struct SocketBuffer {
     }
 
     SocketBuffer() = default;
+
+//     SocketBuffer() {
+// #ifdef WINDOWS
+//         wsaBuf.buf = (char *) ::HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, MAX_SIZE);
+//         wsaBuf.len = MAX_SIZE;
+// #endif
+//     }
 
     SocketBuffer(const SocketBuffer &other) {
         memcpy(buffer, other.buffer, sizeof(buffer));
@@ -79,23 +87,26 @@ struct SocketBuffer {
 
 #ifdef WINDOWS
 
-struct WSAHelper {
-    OVERLAPPED overlapped{};
-    char lpOutputBuf[SocketBuffer::MAX_SIZE]{};
-};
+// struct WSAHelper {
+//     OVERLAPPED overlapped{};
+//     char lpOutputBuf[SocketBuffer::MAX_SIZE]{};
+// };
 
 #endif
 
 struct AsyncSocket {
 public:
 #ifdef WINDOWS
-    WSAHelper helper{};
+    OVERLAPPED overlapped{};
+    char lpOutputBuf[1024]{};
+    // WSAHelper helper{};
     SocketBuffer read_buffer{};
     SocketBuffer write_buffer{};
     DWORD nBytes{};
 #endif
 
     enum class IOType {
+        ACCEPT,
         CLIENT_READ,
         CLIENT_WRITE
     };
@@ -109,6 +120,10 @@ private:
 
 public:
     SendQueue<std::shared_ptr<SocketBuffer> > send_queue{};
+
+    AsyncSocket()
+        : m_type(IOType::ACCEPT), m_socket(INVALID_SOCKET) {
+    }
 
     AsyncSocket(const IOType type, const socket_type socket)
         : m_type(type), m_socket(socket) {
@@ -134,7 +149,16 @@ public:
         send_queue.clear();
         read_buffer.wsaBuf.len = SocketBuffer::MAX_SIZE;
         write_buffer.wsaBuf.len = SocketBuffer::MAX_SIZE;
-        memset(&helper.overlapped, 0, sizeof(OVERLAPPED));
+        memset(&overlapped, 0, sizeof(OVERLAPPED));
+    }
+
+    void reset() {
+        m_is_closed = false;
+        m_is_read_closed = false;
+        send_queue.clear();
+        read_buffer.wsaBuf.len = SocketBuffer::MAX_SIZE;
+        write_buffer.wsaBuf.len = SocketBuffer::MAX_SIZE;
+        memset(&overlapped, 0, sizeof(OVERLAPPED));
     }
 #endif
     void async_send(const std::vector<std::shared_ptr<SocketBuffer> > &data) {
@@ -147,6 +171,10 @@ public:
 
     void close_read() {
         m_is_read_closed = true;
+    }
+
+    void set_socket(socket_type socket) {
+        m_socket = socket;
     }
 
     void set_type(IOType type) {

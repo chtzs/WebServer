@@ -12,7 +12,7 @@
     write_buffer.wsaBuf.len = write_buffer.size;
     write_buffer.wsaBuf.buf = write_buffer.buffer;
     const int ret = WSASend(async_socket->get_socket(), &write_buffer.wsaBuf, 1, &bytes_sent, 0,
-                            &async_socket->helper.overlapped,
+                            &async_socket->overlapped,
                             nullptr);
     if (ret != NOERROR) {
         auto err = GetLastError();
@@ -90,19 +90,17 @@ void MultiplexingWindows::async_post_accept(AsyncSocket *reused = nullptr) const
 
     // Send accept request to IOCP. If done, the next step is to receive data from client.
     // So async_socket->type = AsyncSocket::IOType::CLIENT_READ;
-    if (!AcceptEx(m_socket_listen,
-                  client,
-                  async_socket->helper.lpOutputBuf,
-                  0,
-                  sizeof(sockaddr_in) + 16,
-                  sizeof(sockaddr_in) + 16,
-                  &async_socket->nBytes,
-                  &async_socket->helper.overlapped)) {
+    while (!AcceptEx(m_socket_listen,
+                     client,
+                     async_socket->lpOutputBuf,
+                     0,
+                     sizeof(sockaddr_in) + 16,
+                     sizeof(sockaddr_in) + 16,
+                     &async_socket->nBytes,
+                     &async_socket->overlapped)) {
         // WSA_IO_PENDING means waiting util IOCP is ready to handle event.
-        if (WSAGetLastError() != WSA_IO_PENDING) {
-            // Just try again
-            async_post_accept(async_socket);
-            return;
+        if (WSAGetLastError() == WSA_IO_PENDING) {
+            break;
         }
     }
 
@@ -131,7 +129,7 @@ void MultiplexingWindows::do_receive(AsyncSocket *async_socket, const DWORD lpNu
             1,
             &async_socket->nBytes,
             &dwFlags,
-            &async_socket->helper.overlapped,
+            &async_socket->overlapped,
             nullptr);
 
         auto error = WSAGetLastError();
@@ -147,7 +145,10 @@ void MultiplexingWindows::do_receive(AsyncSocket *async_socket, const DWORD lpNu
 
 void MultiplexingWindows::async_post_send(AsyncSocket *async_socket) const {
     if (async_socket->send_queue.empty()) return;
-
+    if (async_socket->is_closed()) {
+        m_logger->error("What???");
+        return;
+    }
     // Post a send request to iocp
     const auto first_buffer = async_socket->send_queue.get_next_data();
     async_socket->send_queue.move_next_data();
@@ -156,7 +157,7 @@ void MultiplexingWindows::async_post_send(AsyncSocket *async_socket) const {
     async_socket->set_type(AsyncSocket::IOType::CLIENT_WRITE);
     if (ret < 0) {
         async_socket->async_close();
-        m_logger->error("Failed to send data. Error no: %d", (int)GetLastError());
+        m_logger->error("Failed to send data. Error no: %d", (int) GetLastError());
     }
 }
 
@@ -221,7 +222,7 @@ void MultiplexingWindows::async_work() {
         } else if (async_socket->get_type() == AsyncSocket::IOType::CLIENT_READ
                    && async_socket->is_read_closed()
                    && async_socket->send_queue.has_uncommitted_data()) {
-            async_socket->send_queue.commit();
+            async_socket->send_queue.submit();
             async_post_send(async_socket);
         }
     }

@@ -31,7 +31,7 @@ public:
         m_data.insert(m_data.begin(), data.begin(), data.end());
     }
 
-    void commit() {
+    void submit() {
         m_ready_to_send_idx = m_data.size();
     }
 
