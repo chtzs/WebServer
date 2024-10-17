@@ -29,8 +29,6 @@
 class MultiplexingWindows2 : public Multiplexing {
     Logger *m_logger{};
     HANDLE iocpHandle{};
-    LPFN_ACCEPTEX fnAcceptEx{};
-    LPFN_GETACCEPTEXSOCKADDRS fnGetAcceptExSockaddrs{};
 
     void ExitWithError(const std::string &message) const {
         m_logger->error(message.c_str());
@@ -136,27 +134,14 @@ class MultiplexingWindows2 : public Multiplexing {
     }
 
     bool DoAccept(AsyncSocket *socket) {
-        setsockopt(socket->get_socket(),
-                   SOL_SOCKET,
-                   SO_UPDATE_ACCEPT_CONTEXT,
-                   reinterpret_cast<const char *>(&m_socket_listen),
-                   sizeof(m_socket_listen)
-        );
-
-        SOCKADDR_IN *clientAddr = nullptr;
-        SOCKADDR_IN *localAddr = nullptr;
-        int clientAddrLen, localAddrLen;
-        clientAddrLen = localAddrLen = sizeof(SOCKADDR_IN);
-
-        // 1. 获取地址信息 （GetAcceptExSockAddrs函数不仅可以获取地址信息，还可以顺便取出第一组数据）
-        GetAcceptExSockaddrs(socket->read_buffer.wsaBuf.buf, 0, localAddrLen, clientAddrLen, (LPSOCKADDR *) &localAddr,
-                             &localAddrLen, (LPSOCKADDR *) &clientAddr, &clientAddrLen);
-
+        socket_type client = socket->get_socket();
         auto *newSocket = new AsyncSocket(
             AsyncSocket::IOType::CLIENT_READ,
-            socket->get_socket());
+            client);
 
-        AddToIOCP(newSocket->get_socket());
+        AddToIOCP(client);
+        SetNonBlocking(client);
+
         if (!PostReceive(newSocket)) {
             m_logger->error("Failed to post receive request");
             delete newSocket;
@@ -251,34 +236,8 @@ public:
 
     void setup() override {
         m_logger->info("IOCP Setup");
-        // SetNonBlocking(m_socket_listen);
-        GUID guidAcceptEx = WSAID_ACCEPTEX;
-        GUID guidGetAcceptSockAddrs = WSAID_GETACCEPTEXSOCKADDRS;
-        // 提取扩展函数指针
-        DWORD dwBytes = 0;
-        if (SOCKET_ERROR == WSAIoctl(
-                m_socket_listen,
-                SIO_GET_EXTENSION_FUNCTION_POINTER,
-                &guidAcceptEx,
-                sizeof(guidAcceptEx),
-                &fnAcceptEx,
-                sizeof(fnAcceptEx),
-                &dwBytes,
-                NULL,
-                NULL)) {
-        }
+        SetNonBlocking(m_socket_listen);
 
-        if (SOCKET_ERROR == WSAIoctl(
-                m_socket_listen,
-                SIO_GET_EXTENSION_FUNCTION_POINTER,
-                &guidGetAcceptSockAddrs,
-                sizeof(guidGetAcceptSockAddrs),
-                &fnGetAcceptExSockaddrs,
-                sizeof(fnGetAcceptExSockaddrs),
-                &dwBytes,
-                NULL,
-                NULL)) {
-        }
         // Create IOCP handle.
         // 1. We don't need to bind any socket to handle, so we pass INVALID_HANDLE_VALUE;
         // 2. ExistingCompletionPort being nullptr means create new IOCP handle;
