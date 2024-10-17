@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
+#define INVALID_SOCKET (-1)
 #endif
 
 static void close_socket(const socket_type fd) {

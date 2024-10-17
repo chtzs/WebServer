@@ -91,7 +91,7 @@ bool MultiplexingLinux::async_receive(
 bool MultiplexingLinux::async_send(AsyncSocket *socket) {
     auto &queue = socket->send_queue;
     if (queue.has_uncommitted_data()) {
-        queue.commit();
+        queue.submit();
     }
     while (!queue.empty()) {
         auto &send_buffer = queue.get_next_data();

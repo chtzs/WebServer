@@ -6,7 +6,7 @@
 #define MULTIPLEXING_WINDOWS2_H
 #include "Multiplexing.h"
 #include "../../log/Logger.h"
-
+#ifdef WINDOWS
 [[nodiscard]] static ssize_t async_write(AsyncSocket *async_socket, SocketBuffer &buffer) {
     DWORD bytes_sent = 0;
     async_socket->write_buffer = buffer;
@@ -307,5 +307,5 @@ public:
     void stop() override {
     }
 };
-
+#endif
 #endif //MULTIPLEXING_WINDOWS2_H
