@@ -6,7 +6,7 @@
 
 #include "multiplexing/MultiplexingLinux.h"
 #include "multiplexing/MultiplexingWindows.h"
-#include "multiplexing/MultiplexingWindows2.h"
+#include "multiplexing/MultiplexingWindows.h"
 
 void TcpServer::exit_with_error(const std::string &message) const {
     m_logger->error(message.c_str());
@@ -62,7 +62,7 @@ void TcpServer::setup() {
     // Create listen socket with IOCP(WSA_FLAG_OVERLAPPED)
     m_listen_socket = WSASocketW(AF_INET, SOCK_STREAM, IPPROTO_IP, nullptr, 0, WSA_FLAG_OVERLAPPED);
 
-    m_multiplexing = new MultiplexingWindows2(m_listen_socket);
+    m_multiplexing = new MultiplexingWindows(m_listen_socket);
     m_multiplexing->set_callback(m_behavior);
 #elif defined(LINUX)
     // Create the socket with ipv4 and automatic protocol
