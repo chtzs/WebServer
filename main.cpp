@@ -1,4 +1,5 @@
 #include <fstream>
+#include <codecvt>
 
 #include "http/HttpResponse.h"
 #include "http/HttpServer.h"

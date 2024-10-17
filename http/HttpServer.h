@@ -10,8 +10,10 @@
 #include "HttpRequest.h"
 #include "HttpRequestParser.h"
 #include "HttpResponse.h"
+#include "../common/FileReader.h"
 #include "../tcp/TcpServer.h"
 #include "../common/SafeMap.h"
+#include "../common/UrlHelper.h"
 
 using HttpCallback = std::function<void(HttpRequest &, HttpResponse &)>;
 
@@ -51,34 +53,26 @@ class HttpServer {
         if (req.url == "/") {
             filename = "./index.html";
         } else {
-            filename = "." + req.url;
+            filename = "." + UrlHelper::decode(req.url);
         }
         HttpStatus status = HttpStatus::STATUS_OK;
-        std::ifstream ifs(filename, std::ios::binary);
-
-        if (!ifs.good()) {
-            ifs = std::ifstream("./404.html");
+        FileReader reader(filename);
+        if (!reader.good()) {
+            reader = FileReader("./404.html");
             status = HttpStatus::STATUS_NOT_FOUND;
         }
-        std::vector<char> file_buffer;
-        if (m_file_cache.contains_key(filename)) {
-            file_buffer = m_file_cache[filename];
-        } else {
-            // 获取文件大小
-            ifs.seekg(0, std::ios::end);
-            std::streamsize size = ifs.tellg();
-            ifs.seekg(0, std::ios::beg);
 
-            // 读取文件内容到vector中
-            file_buffer = std::vector<char>(size);
-            ifs.read(file_buffer.data(), size);
-            m_file_cache.insert(filename, file_buffer);
+        std::vector<char> content;
+        if (m_file_cache.contains_key(filename)) {
+            content = m_file_cache[filename];
+        } else {
+            content = reader.read_all();
+            m_file_cache.insert(filename, content);
         }
-        ifs.close();
 
         resp.set_status(status);
         resp.set_content_type_by_url(req.url);
-        resp.set_body(std::make_shared<std::vector<char>>(file_buffer));
+        resp.set_body(std::make_shared<std::vector<char> >(content));
     }
 
 public:
