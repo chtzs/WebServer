@@ -32,7 +32,10 @@ struct HttpRequest {
 
     string user_agent{};
 
+    string data{};
+
     unordered_map<string, string> headers{};
+    unordered_map<string, string> parameters{};
 
     void insert(const string &key, const string &value) {
         headers.emplace(key, value);

@@ -7,6 +7,6 @@
 * limit_conn
 
 # HTTP
-* Parser
-* GET/POST/PUT/DELETE
+* ~~Parser~~✔
+* ~~GET/POST~~/PUT/DELETE
 * Multipart

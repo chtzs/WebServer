@@ -30,16 +30,27 @@ class HttpServer {
         if (buffer.size == 0) return;
 
         if (m_request_parsers.contains_key(socket->get_socket())) {
-            m_request_parsers.insert(socket->get_socket(), HttpRequestParser());
+            m_request_parsers.emplace(socket->get_socket(), HttpRequestParser());
         }
-        auto parser = m_request_parsers[socket->get_socket()];
+        auto &parser = m_request_parsers[socket->get_socket()];
 
-        if (parser.feed_data(buffer)) {
+        bool is_successful = false;
+        if (parser.need_more()) {
+            is_successful = parser.feed_data(buffer);
+        }
+
+        if (!is_successful && !parser.need_more()) {
+            socket->async_close();
+            parser.reset();
+        }
+
+        if (is_successful) {
             // std::cout << parser.request.method << std::endl;
             // std::cout << parser.request.protocol << std::endl;
             // std::cout << parser.request.url << std::endl;
             HttpRequest req = parser.request;
             HttpResponse resp{};
+            parser.reset();
             if (m_callback) m_callback(req, resp);
 
             auto socket_buffers = resp.get_response();
@@ -62,13 +73,10 @@ class HttpServer {
             status = HttpStatus::STATUS_NOT_FOUND;
         }
 
-        std::vector<char> content;
-        if (m_file_cache.contains_key(filename)) {
-            content = m_file_cache[filename];
-        } else {
-            content = reader.read_all();
-            m_file_cache.insert(filename, content);
+        if (!m_file_cache.contains_key(filename)) {
+            m_file_cache.insert(filename, reader.read_all());
         }
+        std::vector<char> &content = m_file_cache[filename];
 
         resp.set_status(status);
         resp.set_content_type_by_url(req.url);
