@@ -72,22 +72,14 @@ class HttpResponse {
 
 public:
     explicit HttpResponse() {
-        set_status(HttpStatus::STATUS_OK);
+        set_status(HttpStatus::OK);
         m_body_str = std::make_shared<string>();
         m_body_vector = std::make_shared<vector<char> >();
     }
 
     void set_status(const HttpStatus &status) {
         m_status = status;
-        if (status == HttpStatus::STATUS_OK) {
-            m_status_line = "HTTP/1.1 200 OK";
-        } else if (status == HttpStatus::STATUS_NOT_FOUND) {
-            m_status_line = "HTTP/1.1 404 Not Found";
-        } else if (status == HttpStatus::PARTIAL_CONTENT) {
-            m_status_line = "HTTP/1.1 206 Partial Content";
-        } else if (status == HttpStatus::MOVED_PERMANENTLY) {
-            m_status_line = "HTTP/1.1 301 Moved Permanently";
-        }
+        m_status_line = "HTTP/1.1 " + std::to_string(static_cast<int>(status)) + " " + get_status_string(status);
     }
 
     void set_content_type_by_url(const string &url) {

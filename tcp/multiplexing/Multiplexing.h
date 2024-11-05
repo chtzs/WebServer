@@ -41,7 +41,7 @@ static long receive_bytes(const socket_type fd, char *buf, const int buf_size) {
 
 struct SocketBuffer {
     // HttpRequestParser requires that MAX_SIZE shouldn't be less than 1024
-    static constexpr ssize_t MAX_SIZE = 2048;
+    static constexpr ssize_t MAX_SIZE = 1 << 15;
     char buffer[MAX_SIZE]{};
 #ifdef WINDOWS
     WSABUF wsaBuf{.len = MAX_SIZE, .buf = buffer};
@@ -54,13 +54,6 @@ struct SocketBuffer {
     }
 
     SocketBuffer() = default;
-
-//     SocketBuffer() {
-// #ifdef WINDOWS
-//         wsaBuf.buf = (char *) ::HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, MAX_SIZE);
-//         wsaBuf.len = MAX_SIZE;
-// #endif
-//     }
 
     SocketBuffer(const SocketBuffer &other) {
         memcpy(buffer, other.buffer, sizeof(buffer));

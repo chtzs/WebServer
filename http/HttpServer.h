@@ -18,6 +18,26 @@
 #include "../common/SafeMap.h"
 #include "../common/UrlHelper.h"
 
+inline auto NOT_FOUND_HTML = R"(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        body, html{
+width: 100%; height: 100%; display: flex;
+ justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>404 Not Found</h1>
+</body>
+</html>
+)";
+
 using HttpCallback = std::function<void(HttpRequest &, HttpResponse &)>;
 
 class HttpServer {
@@ -65,9 +85,48 @@ class HttpServer {
         }
     }
 
+    static bool try_handle_not_found(const FileReader &reader, HttpRequest &req, HttpResponse &resp) {
+        if (!reader.good()) {
+            resp.set_status(HttpStatus::NOT_FOUND);
+            resp.insert("Content-Type", "text/html; charset=utf-8");
+            resp.set_body(string(NOT_FOUND_HTML));
+            return true;
+        }
+        return false;
+    }
+
+    static bool try_handle_range(FileReader &reader, HttpRequest &req, HttpResponse &resp) {
+        if (req.headers.count("Range") > 0) {
+            const HttpRange range(req.headers["Range"].c_str(), reader.size());
+            const auto range_str = range.to_string();
+            resp.set_status(HttpStatus::PARTIAL_CONTENT);
+            resp.insert("Accept-Ranges", "bytes");
+            resp.insert("Content-Range", range_str);
+            resp.set_body(std::make_shared<std::vector<char> >(reader.read_range(range)));
+            Logger::get_logger()->info("Range: %s", range_str.c_str());
+            return true;
+        }
+        return false;
+    }
+
+    void handle_cached_file(const std::string &filename, FileReader &reader, HttpRequest &req, HttpResponse &resp) {
+        // Try fetch data from cache
+        if (reader.size() <= MAX_CACHED_SIZE) {
+            if (!m_file_cache.contains_key(filename)) {
+                m_file_cache.insert(filename, reader.read_all());
+            }
+            std::vector<char> &content = m_file_cache[filename];
+            resp.set_body(std::make_shared<std::vector<char> >(content));
+        } else {
+            resp.set_body(std::make_shared<std::vector<char> >(reader.read_all()));
+        }
+
+        resp.set_status(HttpStatus::OK);
+        resp.set_content_type_by_url(req.url);
+    }
+
     void default_callback(HttpRequest &req, HttpResponse &resp) {
-        HttpStatus status = HttpStatus::STATUS_OK;
-        std::string url = FileSystem::normalize_path(UrlHelper::decode(req.url));
+        const std::string url = FileSystem::normalize_path(UrlHelper::decode(req.url));
         std::string filename = "./" + url;
         if (FileSystem::is_directory(filename)) {
             if (filename.back() != '/') {
@@ -80,36 +139,15 @@ class HttpServer {
         }
 
         FileReader reader(filename);
-        if (!reader.good()) {
-            reader = FileReader("./404.html");
-            status = HttpStatus::STATUS_NOT_FOUND;
-        }
+        if (try_handle_not_found(reader, req, resp)) return;
+
+        resp.insert("Last-Modified", FileSystem::get_last_modified(filename));
 
         // Support for range
         // For now, no cache for partial content.
-        if (req.headers.count("Range") > 0) {
-            status = HttpStatus::PARTIAL_CONTENT;
-            HttpRange range(req.headers["Range"].c_str(), reader.size());
-            auto range_str = range.to_string();
-            resp.insert("Accept-Ranges", "bytes");
-            resp.insert("Content-Range", range_str);
-            resp.set_body(std::make_shared<std::vector<char> >(reader.read_range(range)));
-            Logger::get_logger()->info("Range: %s", range_str.c_str());
-        } else {
-            // Try fetch data from cache
-            if (reader.size() <= MAX_CACHED_SIZE) {
-                if (!m_file_cache.contains_key(filename)) {
-                    m_file_cache.insert(filename, reader.read_all());
-                }
-                std::vector<char> &content = m_file_cache[filename];
-                resp.set_body(std::make_shared<std::vector<char> >(content));
-            } else {
-                resp.set_body(std::make_shared<std::vector<char> >(reader.read_all()));
-            }
-        }
+        if (try_handle_range(reader, req, resp)) return;
 
-        resp.set_status(status);
-        resp.set_content_type_by_url(req.url);
+        handle_cached_file(filename, reader, req, resp);
     }
 
 public:
