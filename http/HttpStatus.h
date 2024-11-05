@@ -7,6 +7,7 @@
 
 enum class HttpStatus {
     STATUS_OK = 200,
+    PARTIAL_CONTENT = 206,
     STATUS_NOT_FOUND = 404
 };
 

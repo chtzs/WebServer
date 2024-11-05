@@ -83,6 +83,8 @@ public:
             m_status_line = "HTTP/1.1 200 OK";
         } else if (status == HttpStatus::STATUS_NOT_FOUND) {
             m_status_line = "HTTP/1.1 404 Not Found";
+        } else if (status == HttpStatus::PARTIAL_CONTENT) {
+            m_status_line = "HTTP/1.1 206 Partial Content";
         }
     }
 

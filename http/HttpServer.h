@@ -7,6 +7,7 @@
 #include <fstream>
 #include <utility>
 
+#include "HttpRange.h"
 #include "HttpRequest.h"
 #include "HttpRequestParser.h"
 #include "HttpResponse.h"
@@ -18,6 +19,9 @@
 using HttpCallback = std::function<void(HttpRequest &, HttpResponse &)>;
 
 class HttpServer {
+    // If file size is bigger than this value, then it will not been cached.
+    const int MAX_CACHED_SIZE = 10 * 1024 * 1024;
+
     int m_port;
     TcpServer m_tcp_server;
     HttpCallback m_callback;
@@ -59,7 +63,7 @@ class HttpServer {
         }
     }
 
-    void default_callback(const HttpRequest &req, HttpResponse &resp) {
+    void default_callback(HttpRequest &req, HttpResponse &resp) {
         std::string filename;
         if (req.url == "/") {
             filename = "./index.html";
@@ -73,14 +77,31 @@ class HttpServer {
             status = HttpStatus::STATUS_NOT_FOUND;
         }
 
-        if (!m_file_cache.contains_key(filename)) {
-            m_file_cache.insert(filename, reader.read_all());
+        // Support for range
+        // For now, no cache for partial content.
+        if (req.headers.count("Range") > 0) {
+            status = HttpStatus::PARTIAL_CONTENT;
+            HttpRange range(req.headers["Range"].c_str(), reader.size());
+            auto range_str = range.to_string();
+            resp.insert("Accept-Ranges", "bytes");
+            resp.insert("Content-Range", range_str);
+            resp.set_body(std::make_shared<std::vector<char> >(reader.read_range(range)));
+            Logger::get_logger()->info("Range: %s", range_str.c_str());
+        } else {
+            // Try fetch data from cache
+            if (reader.size() <= MAX_CACHED_SIZE) {
+                if (!m_file_cache.contains_key(filename)) {
+                    m_file_cache.insert(filename, reader.read_all());
+                }
+                std::vector<char> &content = m_file_cache[filename];
+                resp.set_body(std::make_shared<std::vector<char> >(content));
+            } else {
+                resp.set_body(std::make_shared<std::vector<char> >(reader.read_all()));
+            }
         }
-        std::vector<char> &content = m_file_cache[filename];
 
         resp.set_status(status);
         resp.set_content_type_by_url(req.url);
-        resp.set_body(std::make_shared<std::vector<char> >(content));
     }
 
 public:
@@ -103,7 +124,7 @@ public:
     }
 
     void reset_callback() {
-        m_callback = [this](const HttpRequest &req, HttpResponse &resp) {
+        m_callback = [this](HttpRequest &req, HttpResponse &resp) {
             default_callback(req, resp);
         };
     }
