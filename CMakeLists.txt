@@ -33,7 +33,8 @@ add_executable(WebServer main.cpp
         common/SendQueue.h
         common/FileReader.h
         common/UrlHelper.h
-        http/HttpRange.h)
+        http/HttpRange.h
+        common/FileSystem.h)
 if (WIN32)
     #    target_link_libraries(WebServer libwsock32.a)
     target_link_libraries(WebServer libws2_32.a)

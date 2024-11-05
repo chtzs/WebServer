@@ -6,12 +6,14 @@
 #define HTTP_SERVER_H
 #include <fstream>
 #include <utility>
+#include <stringzilla.hpp>
 
 #include "HttpRange.h"
 #include "HttpRequest.h"
 #include "HttpRequestParser.h"
 #include "HttpResponse.h"
 #include "../common/FileReader.h"
+#include "../common/FileSystem.h"
 #include "../tcp/TcpServer.h"
 #include "../common/SafeMap.h"
 #include "../common/UrlHelper.h"
@@ -64,13 +66,19 @@ class HttpServer {
     }
 
     void default_callback(HttpRequest &req, HttpResponse &resp) {
-        std::string filename;
-        if (req.url == "/") {
-            filename = "./index.html";
-        } else {
-            filename = "." + UrlHelper::decode(req.url);
-        }
         HttpStatus status = HttpStatus::STATUS_OK;
+        std::string url = FileSystem::normalize_path(UrlHelper::decode(req.url));
+        std::string filename = "./" + url;
+        if (FileSystem::is_directory(filename)) {
+            if (filename.back() != '/') {
+                resp.insert("Location", url + "/");
+                resp.set_status(HttpStatus::MOVED_PERMANENTLY);
+                return;
+            }
+            filename += "/index.html";
+            filename = FileSystem::normalize_path(filename);
+        }
+
         FileReader reader(filename);
         if (!reader.good()) {
             reader = FileReader("./404.html");
