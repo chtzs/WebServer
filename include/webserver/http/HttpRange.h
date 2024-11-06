@@ -11,6 +11,7 @@ class HttpRange {
     const int64_t MAX_RANGE_LENGTH = 16 * 1024 * 1024;
 
 public:
+    // [begin, end]
     int64_t begin = -1;
     int64_t end = -1;
     int64_t length;
@@ -27,12 +28,11 @@ public:
             end = std::stoll(after);
 
         if (begin == -1) begin = 0;
-        if (end == -1) end = range_length;
-        // end = std::min(end, begin + MAX_RANGE_LENGTH);
+        if (end == -1) end = range_length - 1;
     }
 
     [[nodiscard]] std::string to_string() const {
-        std::string result = "bytes " + std::to_string(begin) + "-" + std::to_string(end - 1) + "/" + std::to_string(length);
+        std::string result = "bytes " + std::to_string(begin) + "-" + std::to_string(end) + "/" + std::to_string(length);
         return std::move(result);
     }
 };

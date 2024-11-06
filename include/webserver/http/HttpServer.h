@@ -103,7 +103,7 @@ class HttpServer {
             resp.insert("Accept-Ranges", "bytes");
             resp.insert("Content-Range", range_str);
             resp.set_body(std::make_shared<std::vector<char> >(reader.read_range(range)));
-            Logger::get_logger()->info("Range: %s", range_str.c_str());
+            Logger::get_logger()->info("Range: %s", req.headers["Range"].c_str());
             return true;
         }
         return false;

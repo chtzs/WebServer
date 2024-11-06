@@ -85,9 +85,9 @@ public:
     }
 
     std::vector<char> read_range(const HttpRange &range) {
-        std::vector<char> file_buffer(range.end - range.begin);
+        std::vector<char> file_buffer(range.end - range.begin + 1);
         m_file.seekg(range.begin, std::ios::beg);
-        m_file.read(file_buffer.data(), range.end - range.begin);
+        m_file.read(file_buffer.data(), range.end - range.begin + 1);
         return std::move(file_buffer);
     }
 
