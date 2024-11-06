@@ -3,7 +3,7 @@
 //
 
 #include <iostream>
-#include "ThreadPool.h"
+#include "thread_pool/ThreadPool.h"
 
 ThreadPool::ThreadPool(const int num_workers)
     : num_workers(num_workers) {

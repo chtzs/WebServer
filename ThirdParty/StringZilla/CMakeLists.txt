@@ -11,4 +11,4 @@ target_include_directories(StringZilla
         $<INSTALL_INTERFACE:include>
 )
 
-#install(FILES include/stringzilla.hpp DESTINATION include)
+install(DIRECTORY include/ DESTINATION include)

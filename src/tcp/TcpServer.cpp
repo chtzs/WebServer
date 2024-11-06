@@ -2,11 +2,11 @@
 // Created by Haotian on 2024/10/1.
 //
 
-#include "TcpServer.h"
+#include "tcp/TcpServer.h"
 
-#include "multiplexing/MultiplexingLinux.h"
-#include "multiplexing/MultiplexingWindows.h"
-#include "multiplexing/MultiplexingWindows.h"
+#include "tcp/multiplexing/MultiplexingLinux.h"
+#include "tcp/multiplexing/MultiplexingWindows.h"
+#include "tcp/multiplexing/MultiplexingWindows.h"
 
 void TcpServer::exit_with_error(const std::string &message) const {
     m_logger->error(message.c_str());
