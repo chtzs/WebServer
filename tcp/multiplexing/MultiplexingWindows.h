@@ -172,11 +172,12 @@ class MultiplexingWindows : public Multiplexing {
         auto &queue = socket->send_queue;
         if (!queue.empty()) {
             auto &send_buffer = queue.get_next_data();
-            // Try write buffer to client
+            // Try to write buffer to client
             const auto ret = async_write(socket, *send_buffer);
             // If failed, close socket
             if (ret < 0) {
-                m_logger->error("Failed to post iocp overlapped call");
+                // m_logger->error("Failed to post iocp overlapped call");
+                queue.clear();
                 return false;
             }
             queue.move_next_data();
