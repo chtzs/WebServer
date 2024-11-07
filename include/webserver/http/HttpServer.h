@@ -4,7 +4,6 @@
 
 #ifndef HTTP_SERVER_H
 #define HTTP_SERVER_H
-#include <fstream>
 #include <utility>
 #include <stringzilla.hpp>
 
@@ -41,6 +40,8 @@ width: 100%; height: 100%; display: flex;
 using HttpCallback = std::function<void(HttpRequest &, HttpResponse &)>;
 
 class HttpServer {
+    using string = std::string;
+
     // If file size is bigger than this value, then it will not been cached.
     const int MAX_CACHED_SIZE = 10 * 1024 * 1024;
 
@@ -125,8 +126,27 @@ class HttpServer {
         resp.set_content_type_by_url(req.url);
     }
 
+public:
+    explicit HttpServer(const int port)
+        : m_port(port),
+          m_tcp_server("0.0.0.0", port) {
+        ConnectionBehavior behavior{};
+        behavior.on_received = [this](AsyncSocket *socket, const SocketBuffer &buffer) {
+            on_received(socket, buffer);
+        };
+        behavior.then_respond = [this](AsyncSocket *socket) {
+            socket->async_close();
+        };
+        m_tcp_server.set_callback(behavior);
+        reset_callback();
+    }
+
+    void set_callback(HttpCallback callback) {
+        m_callback = std::move(callback);
+    }
+
     void default_callback(HttpRequest &req, HttpResponse &resp) {
-        const std::string url = FileSystem::normalize_path(UrlHelper::decode(req.url));
+        const std::string url = req.url;
         std::string filename = "./" + url;
         if (FileSystem::is_directory(filename)) {
             if (filename.back() != '/') {
@@ -148,25 +168,6 @@ class HttpServer {
         if (try_handle_range(reader, req, resp)) return;
 
         handle_cached_file(filename, reader, req, resp);
-    }
-
-public:
-    explicit HttpServer(const int port)
-        : m_port(port),
-          m_tcp_server("0.0.0.0", port) {
-        ConnectionBehavior behavior{};
-        behavior.on_received = [this](AsyncSocket *socket, const SocketBuffer &buffer) {
-            on_received(socket, buffer);
-        };
-        behavior.then_respond = [this](AsyncSocket *socket) {
-            socket->async_close();
-        };
-        m_tcp_server.set_callback(behavior);
-        reset_callback();
-    }
-
-    void set_callback(HttpCallback callback) {
-        m_callback = std::move(callback);
     }
 
     void reset_callback() {

@@ -8,11 +8,11 @@
 #include <mutex>
 #include <queue>
 
-using std::mutex;
-using std::lock_guard;
-
 template<typename Type>
 class SafeQueue {
+    using mutex = std::mutex;
+    using lock_guard = std::lock_guard<mutex>;
+
     mutex queue_mtx{};
     std::queue<Type> queue{};
 

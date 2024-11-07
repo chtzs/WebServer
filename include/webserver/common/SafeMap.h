@@ -4,11 +4,10 @@
 #include <mutex>
 #include <unordered_map>
 
-using std::mutex;
-using std::lock_guard;
-
 template<typename K, typename V, typename Map = std::unordered_map<K, V> >
 class SafeMap {
+    using mutex = std::mutex;
+    using lock_guard = std::lock_guard<mutex>;
     Map map;
     mutex m_mutex;
 

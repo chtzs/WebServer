@@ -44,8 +44,9 @@ public:
         return fs::is_directory(path);
     }
 
-    static std::string normalize_path(const std::string &path) {
-        std::string result;
+    template<typename Str = std::string>
+    static Str normalize_path(const Str &path) {
+        Str result;
         bool is_directory = false;
         const size_t length = path.length();
 
@@ -76,8 +77,8 @@ public:
     }
 
     static bool contains_pattern(const sz::string_view &path, const sz::string_view &pattern) {
-        const sz::string_view norm_path = normalize_path(path);
-        const sz::string_view norm_pattern = normalize_path(pattern);
+        const sz::string_view norm_path = normalize_path<sz::string>(path);
+        const sz::string_view norm_pattern = normalize_path<sz::string>(pattern);
         return norm_path.starts_with(norm_pattern);
     }
 };

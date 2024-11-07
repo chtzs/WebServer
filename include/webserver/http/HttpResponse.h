@@ -11,18 +11,23 @@
 
 #include "HttpStatus.h"
 #include "../tcp/multiplexing/Multiplexing.h"
-using std::string;
-using std::unordered_map;
-using std::vector;
-using std::shared_ptr;
+
 
 class HttpResponse {
+    using string = std::string;
+    template<typename K, typename V>
+    using unordered_map = std::unordered_map<K, V>;
+    template<typename T>
+    using vector = std::vector<T>;
+    template<typename T>
+    using shared_ptr = std::shared_ptr<T>;
+
     unordered_map<string, string> headers{};
 
     HttpStatus m_status{};
     string m_status_line{};
-    std::shared_ptr<string> m_body_str;
-    std::shared_ptr<vector<char> > m_body_vector;
+    shared_ptr<string> m_body_str;
+    shared_ptr<vector<char> > m_body_vector;
 
     template<typename StrLike>
     static void put_string(const shared_ptr<vector<shared_ptr<SocketBuffer> > > &response, const StrLike &str,

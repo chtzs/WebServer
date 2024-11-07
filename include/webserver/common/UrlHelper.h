@@ -9,8 +9,9 @@
 
 class UrlHelper {
 public:
-    static std::string decode(const std::string &encoded_url) {
-        std::string decoded_url;
+    template<typename Str = std::string>
+    static Str decode(const Str &encoded_url) {
+        Str decoded_url;
         std::istringstream stream(encoded_url);
         char ch;
 
@@ -20,13 +21,13 @@ public:
                 char hex1, hex2;
                 stream.get(hex1);
                 stream.get(hex2);
-                const int value = std::stoi(std::string(1, hex1) + std::string(1, hex2), nullptr, 16);
+                const int value = std::stoi(Str(1, hex1) + Str(1, hex2), nullptr, 16);
                 ch = static_cast<char>(value);
             }
             decoded_url += ch;
         }
 
-        return decoded_url;
+        return std::move(decoded_url);
     }
 };
 

@@ -4,12 +4,16 @@
 
 #ifndef HTTP_REQUEST_H
 #define HTTP_REQUEST_H
-#include <string>
+
 #include <unordered_map>
-using std::string;
-using std::unordered_map;
+#include <stringzilla.hpp>
+
 
 struct HttpRequest {
+    using string = sz::string;
+    template<typename K, typename V>
+    using unordered_map = std::unordered_map<K, V>;
+
     string method{};
     string url{};
     string protocol{};

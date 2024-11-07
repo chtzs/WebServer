@@ -5,10 +5,13 @@
 #ifndef HTTP_REQUEST_PARSER_H
 #define HTTP_REQUEST_PARSER_H
 
-#include "../tcp/multiplexing/Multiplexing.h"
 #include <string>
 #include <sstream>
+#include <stringzilla.hpp>
+
 #include "HttpRequest.h"
+#include "common/FileSystem.h"
+#include "common/UrlHelper.h"
 
 #define RETURN_FAILED() \
 {\
@@ -31,9 +34,10 @@
     return true;\
 }
 
-using std::string;
 
 class HttpRequestParser {
+    using string = sz::string;
+
     enum class ParseState {
         METHOD,
         URL,
@@ -108,7 +112,7 @@ class HttpRequestParser {
             if (!read_util_char(' ', idx, buffer, temp)) {
                 RETURN_FAILED()
             }
-            request.url = temp;
+            request.url = FileSystem::normalize_path(UrlHelper::decode(temp));
             temp.clear();
             state = ParseState::PROTOCOL;
             idx++;
@@ -169,7 +173,7 @@ class HttpRequestParser {
             if (data_size < max_size) {
                 RETURN_NEED_MORE()
             }
-            request.data = std::move(data_ss.str());
+            request.data = data_ss.str();
             state = ParseState::DONE;
             RETURN_SUCCESS()
         }
