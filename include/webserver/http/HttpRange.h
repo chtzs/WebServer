@@ -17,7 +17,7 @@ public:
     int64_t length;
 
     // Format: Range:(unit=first byte pos)-[last byte pos]
-    explicit HttpRange(const char *range_command, const int64_t range_length = 0) : length(range_length){
+    explicit HttpRange(const char *range_command, const int64_t range_length = 0) : length(range_length) {
         // Range should start with "bytes="
         const sz::string_view range_command_str(range_command);
         const auto range = range_command_str.remove_prefix("bytes=");
@@ -32,7 +32,8 @@ public:
     }
 
     [[nodiscard]] std::string to_string() const {
-        std::string result = "bytes " + std::to_string(begin) + "-" + std::to_string(end) + "/" + std::to_string(length);
+        std::string result = "bytes " + std::to_string(begin) + "-" + std::to_string(end) + "/" +
+                             std::to_string(length);
         return std::move(result);
     }
 };

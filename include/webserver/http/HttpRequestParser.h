@@ -10,8 +10,9 @@
 #include <stringzilla.hpp>
 
 #include "HttpRequest.h"
-#include "common/FileSystem.h"
-#include "common/UrlHelper.h"
+#include "../common/FileSystem.h"
+#include "../common/UrlHelper.h"
+#include "../tcp/multiplexing/Multiplexing.h"
 
 #define RETURN_FAILED() \
 {\
