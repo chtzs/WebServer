@@ -48,9 +48,11 @@ class HttpServer {
     int m_port;
     TcpServer m_tcp_server;
     HttpCallback m_callback;
+    bool m_enable_cache = false;
 
     SafeMap<socket_type, HttpRequestParser> m_request_parsers{};
     SafeMap<string, std::vector<char> > m_file_cache{};
+    std::unordered_map<string, HttpCallback> m_custom_request_callbacks{};
 
     void on_received(AsyncSocket *socket, const SocketBuffer &buffer) {
         if (socket->is_read_closed() || socket->is_closed()) return;
@@ -72,9 +74,6 @@ class HttpServer {
         }
 
         if (is_successful) {
-            // std::cout << parser.request.method << std::endl;
-            // std::cout << parser.request.protocol << std::endl;
-            // std::cout << parser.request.url << std::endl;
             HttpRequest req = parser.request;
             HttpResponse resp{};
             parser.reset();
@@ -84,6 +83,14 @@ class HttpServer {
             socket->async_send(*socket_buffers);
             socket->close_read();
         }
+    }
+
+    bool try_handle_custom_request(HttpRequest &req, HttpResponse &resp) {
+        if (m_custom_request_callbacks.count(req.url) > 0) {
+            m_custom_request_callbacks[req.url](req, resp);
+            return true;
+        }
+        return false;
     }
 
     static bool try_handle_not_found(const FileReader &reader, HttpRequest &req, HttpResponse &resp) {
@@ -112,7 +119,7 @@ class HttpServer {
 
     void handle_cached_file(const std::string &filename, FileReader &reader, HttpRequest &req, HttpResponse &resp) {
         // Try fetch data from cache
-        if (reader.size() <= MAX_CACHED_SIZE) {
+        if (m_enable_cache && reader.size() <= MAX_CACHED_SIZE) {
             if (!m_file_cache.contains_key(filename)) {
                 m_file_cache.insert(filename, reader.read_all());
             }
@@ -141,11 +148,29 @@ public:
         reset_callback();
     }
 
+    void enable_cache() {
+        m_enable_cache = true;
+    }
+
+    void disable_cache() {
+        m_enable_cache = false;
+    }
+
+    void add_custom_request_callback(const string &url, HttpCallback &&callback) {
+        m_custom_request_callbacks.emplace(url, std::move(callback));
+    }
+
+    void remove_custom_request_callback(const string &url) {
+        m_custom_request_callbacks.erase(url);
+    }
+
     void set_callback(HttpCallback callback) {
         m_callback = std::move(callback);
     }
 
     void default_callback(HttpRequest &req, HttpResponse &resp) {
+        if (try_handle_custom_request(req, resp)) return;
+
         const std::string url = req.url;
         std::string filename = "./" + url;
         if (FileSystem::is_directory(filename)) {
